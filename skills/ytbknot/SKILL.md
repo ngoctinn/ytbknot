@@ -38,14 +38,17 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ## Trích xuất ảnh
 
-**Quy tắc chọn khung hình:**
+**Quy tắc chọn khung hình theo ngữ cảnh:**
 - **Không chụp đầu chương**: Giây bắt đầu chương hầu hết là slide tiêu đề hoặc người nói chuyện, không chứa nội dung kỹ thuật. Phân đoạn chương chỉ dùng để chia mục lục bài viết.
-- **Bắt trúng hành động**: Khung hình bắt buộc phải chứa câu lệnh terminal, giao diện mã nguồn trong IDE, sơ đồ kiến trúc hoặc câu hỏi bài tập.
+- **Bài giảng thao tác màn hình (Live-coding / Terminal)**: Bắt khung hình ngay khi thao tác lệnh hoặc đoạn mã được thực thi hoàn tất.
+- **Bài giảng giải đề, slide trình chiếu hoặc bảng viết (Slide-based / Whiteboard / Problem-solving)**:
+  * **Bắt buộc chụp tại mốc cuối phân đoạn** của từng câu/mục (ngay trước khi giảng viên chuyển sang nội dung kế tiếp từ 2 đến 5 giây).
+  * Đây là thời điểm màn hình hiển thị trọn vẹn 100% nội dung ghi chú viết tay, lời giải chi tiết, phân tích đáp án và các từ vựng mở rộng mà giảng viên đã tổng hợp (tránh chụp đầu phân đoạn khi slide còn trắng trơn).
 - **Tua nhanh trực tiếp**: Luôn sử dụng danh sách mốc thời gian cụ thể để ffmpeg nhảy cóc tức thời qua HTTP Range (1-2 giây mỗi ảnh), loại bỏ hoàn toàn nguy cơ bị YouTube bóp băng thông.
 
 **Quy trình thực thi:**
 1. **Trích xuất theo kịch bản (Bắt buộc)**:
-   - Trong từng khối kịch bản, AI xác định chính xác các mốc giây xuất hiện câu hỏi hoặc thao tác kỹ thuật thực tế.
+   - Trong từng khối kịch bản, AI xác định chính xác các mốc giây tối ưu theo ngữ cảnh (cuối lời giải cho bài giảng slide/giải đề; sau khi chạy lệnh cho live-coding).
    - Loại bỏ hoàn toàn các phân đoạn nói chuyện phiếm (talking head).
    - Chạy lệnh trích xuất chính xác các mốc đã lọc (sử dụng lại cache, không tải lại YouTube):
    ```bash

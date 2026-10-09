@@ -14,7 +14,7 @@ Plugin trích xuất và chuyển đổi video YouTube thành tài liệu học 
   * **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút để nắm trọn 100% tinh hoa, công thức và quy tắc cốt lõi.
   * **Tầng 2 (Bóc tách chi tiết):** Phân tích từng phân đoạn demo hoặc câu hỏi, đối chiếu đề bài, phương án, họ từ mở rộng và khung hình tương ứng.
 * **Tiêu chuẩn trình bày:** 100% Tiếng Việt Kỹ thuật, không dùng bất kỳ emoji trang trí nào, tiêu đề ngắn gọn thuần Việt (2-4 từ, không ngoặc đơn tiếng Anh).
-* **Lọc ảnh kỹ thuật:** AI tự động đọc kịch bản để tìm đúng khoảnh khắc có thao tác kỹ thuật thật (terminal, code trong IDE, sơ đồ kiến trúc), loại bỏ hoàn toàn ảnh chân dung người nói (talking head).
+* **Lọc ảnh kỹ thuật theo ngữ cảnh:** AI tự động phân loại bài giảng: với live-coding bắt ảnh khi lệnh hoàn tất; với bài giảng giải đề/slide bắt ảnh tại mốc cuối phân đoạn (trước khi chuyển câu 2-5 giây) để lưu trọn vẹn 100% bút phê, ghi chú và lời giải chi tiết của giảng viên; loại bỏ hoàn toàn ảnh chân dung (talking head).
 
 ---
 

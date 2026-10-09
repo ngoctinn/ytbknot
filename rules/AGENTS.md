@@ -16,6 +16,10 @@ Quy tắc bắt buộc khi kích hoạt skill `ytbknot`:
 - **AI lọc khung hình có căn cứ:**
   - Không chụp mù quáng ở mốc đầu chapter.
   - Phải phân tích kịch bản để tìm chính xác giây tác giả **thực sự show màn hình code, gõ lệnh terminal, mở VS Code hoặc chiếu sơ đồ**.
+  - **Bài giảng thao tác màn hình (Live-coding / Terminal)**: Bắt khung hình ngay khi thao tác lệnh hoặc đoạn mã được thực thi hoàn tất.
+  - **Bài giảng giải đề, slide trình chiếu hoặc bảng viết (Slide-based / Whiteboard / Problem-solving)**:
+    - BẮT BUỘC chụp tại mốc **CUỐI PHÂN ĐOẠN** của từng câu/mục (ngay trước khi giảng viên chuyển sang nội dung kế tiếp từ 2 đến 5 giây).
+    - Đây là thời điểm màn hình hiển thị trọn vẹn 100% nội dung ghi chú viết tay, lời giải chi tiết, phân tích đáp án và các từ vựng mở rộng mà giảng viên đã tổng hợp (tránh chụp đầu phân đoạn khi slide còn trắng trơn).
 - **Cấm nhồi ảnh chân dung tác giả (Talking Head):**
   - Những phân đoạn tác giả chỉ ngồi nói chuyện chay bằng miệng mà không có màn hình code/slide: **Không chụp ảnh rác**. Chỉ tóm tắt luận điểm kỹ thuật bằng lời.
 
