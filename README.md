@@ -63,9 +63,10 @@ Lệnh thực thi CLI được gắn sẵn vào PATH: `ytbknot` (tại `~/.local
 
 Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 pha:
 1. **Pha 1 (Trinh sát):** Tải nhanh metadata và transcript sạch (lưu cache, không chụp ảnh).
-2. **Pha 2 (Trích xuất thích ứng):**
-   * Nếu có chương: Tự động trích xuất theo chapters.
-   * Nếu không có chương: AI lọc 5-10 mốc thời gian xuất hiện thao tác kỹ thuật và chụp chính xác.
+2. **Pha 2 (Trích xuất hành động thực tế):**
+   * AI phân tích kịch bản để tìm mốc thời gian thao tác kỹ thuật cụ thể (terminal, code IDE, sơ đồ kiến trúc), tuyệt đối không chụp tại mốc đầu chương (tránh ảnh chân dung hoặc slide bìa).
+   * Nếu có chương: AI chọn 1-2 mốc hành động then chốt nằm sâu trong thân từng chương.
+   * Nếu không có chương: AI chọn 5-10 mốc thời gian kỹ thuật quan trọng nhất dọc bài giảng.
    * Nếu ngoại lệ (không có phụ đề hoặc thời lượng > 2 giờ): Mở hộp thoại hỏi ý định người dùng.
 
 ### Các tùy chọn qua Terminal CLI:
@@ -75,7 +76,7 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
   ytbknot "https://www.youtube.com/watch?v=..." --no-save --clean-ads
   ```
 
-* **Trích xuất theo các mốc thời gian chỉ định (tận dụng cache):**
+* **Trích xuất theo các mốc thời gian chỉ định (tua nhanh trực tiếp, không nghẽn mạng):**
   ```bash
   ytbknot "https://www.youtube.com/watch?v=..." --screenshots "1:15,4:30,9:45" --force
   ```
@@ -83,11 +84,6 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
 * **Chụp ảnh theo chu kỳ thời gian:**
   ```bash
   ytbknot "https://www.youtube.com/watch?v=..." --interval 60 --clean-ads
-  ```
-
-* **Tự động quét chuyển cảnh qua ffmpeg:**
-  ```bash
-  ytbknot "https://www.youtube.com/watch?v=..." --screenshots scenes --force
   ```
 
 * **Lấy thêm bình luận thảo luận từ cộng đồng:**

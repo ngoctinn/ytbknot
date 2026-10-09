@@ -30,17 +30,8 @@ if sys.platform == "win32":
 
 TMPDIR = tempfile.gettempdir()
 
-# Scene-detection defaults (select filter scene score, range 0..1)
-DEFAULT_SCENE_THRESHOLD = 0.04
-SCENE_MIN_GAP_SECONDS = 4.0
-SCENE_MAX_SCREENSHOTS = 50
-SCENE_SEEK_OFFSET = 0.5  # settle offset past the detected change (fades)
-
-# Perceptual frame-dedup (scenes mode): compare 16x16 grayscale thumbnails.
-# Mean-absolute-difference (0..255 scale) at or below the threshold counts as a
-# near-duplicate and is dropped. 16x16 gray keeps it cheap and layout-robust.
-PERCEPTUAL_DEDUP_THRESHOLD = 2.0
-THUMBNAIL_SIZE = 16
+# Semantic chunking defaults for long video analysis
+DEFAULT_CHUNK_MINUTES = 15.0
 
 # Visual grounding (--visual): how many evenly-spaced keyframes the summarizer
 # worker looks at. Fixed (no override) — keeps the token cost predictable.
@@ -598,110 +589,92 @@ def check_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
-def parse_screenshots_mode(arg: str) -> tuple[str, float | None]:
+def parse_screenshots_mode(arg: str) -> str:
     """Classify the --screenshots argument value.
-
-    Returns (mode, threshold):
-    - 'scenes'              -> ('scenes', DEFAULT_SCENE_THRESHOLD)
-    - 'scenes=0.05'         -> ('scenes', 0.05) — raises ValueError outside (0, 1]
-    - 'chapters' / 'auto'   -> ('chapters', None) — 'auto' was the pre-1.8.0
-      const value; keeping the alias preserves old behavior for any direct
-      caller still passing it.
-    - anything else         -> ('timestamps', None), raw arg flows into the
-      existing comma-separated parser.
+    Returns 'interval', 'chapters', or 'timestamps'.
     """
     if arg in ("chapters", "auto"):
-        return ("chapters", None)
-    if arg == "scenes":
-        return ("scenes", DEFAULT_SCENE_THRESHOLD)
-    if arg.startswith("scenes="):
-        threshold = float(arg.split("=", 1)[1])  # ValueError on non-float
-        if not 0 < threshold <= 1:
-            raise ValueError(f"Scene threshold must be in (0, 1], got {threshold}")
-        return ("scenes", threshold)
-    return ("timestamps", None)
+        return "chapters"
+    if arg.startswith("interval="):
+        return "interval"
+    return "timestamps"
 
 
-def parse_scene_timestamps(ffmpeg_output: str) -> list[float]:
-    """Extract pts_time values from ffmpeg ``metadata=print:file=-`` output.
-
-    Expected line shape (verified against ffmpeg output):
-        frame:0    pts:1024    pts_time:0.0666667
-        lavfi.scene_score=0.090931
-    pts_time may lack a decimal part (``pts_time:1``). Everything that does
-    not match is ignored, so format drift degrades to fewer matches, not a
-    crash.
+def chunk_transcript(
+    segments: list[tuple[float, str]],
+    duration: float,
+    chunk_minutes: float = DEFAULT_CHUNK_MINUTES,
+    chapters: list[dict] | None = None,
+) -> list[dict]:
+    """Segment transcript into manageable semantic blocks for deep analysis.
+    If chapters are available and meaningful (>= 3 chapters), use chapters.
+    Otherwise, split by chunk_minutes (e.g. 15 minutes) with time windows.
+    Returns list of dicts:
+        {'index': int, 'title': str, 'start': float, 'end': float, 'text': str, 'cues': list}
     """
-    return sorted(
-        float(m.group(1))
-        for m in re.finditer(r"pts_time:(\d+(?:\.\d+)?)", ffmpeg_output)
-    )
-
-
-def apply_min_gap(timestamps: list[float], min_gap: float = SCENE_MIN_GAP_SECONDS) -> list[float]:
-    """Drop timestamps closer than min_gap to the last kept one (keeps the
-    first of each cluster). Input is sorted defensively."""
-    kept: list[float] = []
-    for ts in sorted(timestamps):
-        if not kept or ts - kept[-1] >= min_gap:
-            kept.append(ts)
-    return kept
-
-
-def evenly_spaced_timestamps(duration: float, count: int) -> list[float]:
-    """Return `count` timestamps evenly spaced across a video of `duration`
-    seconds, at duration*i/(count+1) for i in 1..count. Used by --visual to
-    sample keyframes for visual grounding. Returns [] when duration or count
-    is non-positive (fail-open: the caller then extracts nothing)."""
-    if not duration or duration <= 0 or count <= 0:
+    if not segments:
         return []
-    return [duration * i / (count + 1) for i in range(1, count + 1)]
+
+    chunks = []
+    # If chapters available with >= 3 items, use them as semantic blocks
+    if chapters and len(chapters) >= 3:
+        for idx, ch in enumerate(chapters, 1):
+            ch_start = float(ch.get("start_time", 0.0))
+            ch_end = _chapter_end_time(chapters, idx - 1)
+            ch_title = ch.get("title", f"Khối {idx}").strip()
+            ch_cues = [(t, txt) for t, txt in segments if ch_start <= t < ch_end]
+            ch_text = " ".join(txt for _, txt in ch_cues).strip()
+            chunks.append({
+                "index": idx,
+                "title": ch_title,
+                "start": ch_start,
+                "end": ch_end,
+                "text": ch_text,
+                "cues": ch_cues,
+            })
+        return chunks
+
+    # Otherwise chunk by time window (default 15m = 900s)
+    chunk_sec = chunk_minutes * 60.0
+    total_dur = duration if duration > 0 else (segments[-1][0] if segments else 0)
+    current_start = 0.0
+    idx = 1
+    while current_start < total_dur:
+        current_end = min(total_dur, current_start + chunk_sec)
+        block_cues = [(t, txt) for t, txt in segments if current_start <= t < current_end]
+        block_text = " ".join(txt for _, txt in block_cues).strip()
+        start_str = format_timestamp_display(current_start)
+        end_str = format_timestamp_display(current_end)
+        chunks.append({
+            "index": idx,
+            "title": f"Khối {idx} ({start_str} - {end_str})",
+            "start": current_start,
+            "end": current_end,
+            "text": block_text,
+            "cues": block_cues,
+        })
+        current_start = current_end
+        idx += 1
+
+    return chunks
 
 
-def thin_evenly(timestamps: list[float], max_count: int = SCENE_MAX_SCREENSHOTS) -> list[float]:
-    """Reduce to max_count entries by even index sampling, preserving the
-    first and last timestamp. Returns the list unchanged when small enough."""
-    n = len(timestamps)
-    if n <= max_count:
-        return timestamps
-    indices = {round(i * (n - 1) / (max_count - 1)) for i in range(max_count)}
-    return [timestamps[i] for i in sorted(indices)]
+def render_transcript_chunks(chunks: list[dict]) -> str:
+    """Render semantic chunks summary for structured Tier 2 analysis."""
+    if not chunks:
+        return ""
+    lines = ["### Phân khối kịch bản (Semantic Chunks)"]
+    for c in chunks:
+        start_str = format_timestamp_display(c["start"])
+        end_str = format_timestamp_display(c["end"])
+        word_count = len(c["text"].split())
+        lines.append(f"#### Khối {c['index']}: [{start_str} - {end_str}] — {c['title']} (~{word_count} từ)")
+        excerpt = c["text"][:160] + "..." if len(c["text"]) > 160 else c["text"]
+        lines.append(f"> Tóm lược đầu khối: {excerpt}\n")
+    return "\n".join(lines).strip()
 
 
-def frame_delta(a: Sequence[int], b: Sequence[int]) -> float:
-    """Mean absolute difference between two equal-length pixel sequences
-    (16x16 grayscale thumbnails, values 0..255).
 
-    Returns 0.0 for two empty inputs and ``inf`` on a length mismatch, so a
-    thumbnail that could not be built the same way as its neighbour is treated
-    as "definitely different" and kept rather than silently dropped.
-    """
-    if len(a) != len(b):
-        return float("inf")
-    if not a:
-        return 0.0
-    return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
-
-
-def dedupe_perceptual_indices(
-    thumbs: list[Sequence[int]],
-    threshold: float = PERCEPTUAL_DEDUP_THRESHOLD,
-) -> list[int]:
-    """Return the indices of frames to keep, dropping near-duplicates.
-
-    Keeps the first frame, then keeps each subsequent frame only when its
-    delta against the last *kept* frame is strictly greater than ``threshold``.
-    Comparing against the last kept frame (not the previous one) prevents slow
-    visual drift from accumulating unnoticed: a static slide collapses to a
-    single capture, while a gradual pan still yields periodic keeps.
-    """
-    kept: list[int] = []
-    last_thumb: Sequence[int] | None = None
-    for i, thumb in enumerate(thumbs):
-        if last_thumb is None or frame_delta(thumb, last_thumb) > threshold:
-            kept.append(i)
-            last_thumb = thumb
-    return kept
 
 
 def get_chapter_for_timestamp(timestamp: float, chapters: list[dict]) -> str | None:
@@ -731,12 +704,24 @@ def resolve_timestamps(
             pass
 
     if screenshots_arg in ("chapters", "auto"):
+        warnings.append(
+            "Chapter-start captures often show intro/talking heads. "
+            "Sampling within chapter body for active content."
+        )
         if chapters:
-            # Validate chapter timestamps against duration
-            return [
-                ch["start_time"] for ch in chapters
-                if 0 <= ch.get("start_time", -1) <= duration
-            ]
+            result = []
+            for i, ch in enumerate(chapters):
+                start = float(ch.get("start_time", 0))
+                end = float(ch.get("end_time", duration)) if ch.get("end_time") is not None else (
+                    float(chapters[i + 1]["start_time"]) if i + 1 < len(chapters) else duration
+                )
+                # Sample inside chapter body (40% mark, at least 15s in) to skip talking-head intro
+                chap_len = max(0.0, end - start)
+                offset = min(chap_len * 0.4, max(15.0, chap_len * 0.2)) if chap_len > 20 else chap_len * 0.5
+                target_ts = round(start + offset, 1)
+                if 0 <= target_ts <= duration:
+                    result.append(target_ts)
+            return result
         # Fallback when no chapters: distribute 8-12 evenly spaced frames
         if duration and duration > 0:
             count = min(12, max(6, int(duration // 180)))
@@ -778,98 +763,7 @@ def get_stream_url(url: str) -> str | None:
     return lines[0] if lines else None
 
 
-def get_lowres_stream_url(url: str) -> str | None:
-    """Get a low-resolution (<=360p) direct stream URL for the scene-detection
-    pass. Detection decodes every frame, so bandwidth matters; the final
-    screenshots are still extracted from the <=720p stream."""
-    result = run_ytdlp([
-        "-g", "-f", "bestvideo[height<=360]/bestvideo/best[height<=360]/best",
-        "--no-playlist", "--no-warnings", url,
-    ])
-    if result.returncode != 0:
-        return None
-    lines = result.stdout.strip().split("\n")
-    return lines[0] if lines else None
 
-
-def detect_scene_timestamps(
-    url: str,
-    threshold: float,
-    duration: float,
-    warnings: list[str],
-) -> list[float]:
-    """Pass 1 of scene mode: decode the low-res stream once and return the
-    timestamps where ffmpeg's scene score exceeds threshold. Frames are NOT
-    written here — extraction happens via extract_screenshots() at <=1080p.
-
-    Returns [] on any failure (caller renders the run with 0 screenshots and
-    the warning explains why). A pass that fails with HTTP 403 is retried
-    exactly once with a freshly fetched stream URL — YouTube occasionally
-    invalidates stream URLs right after issuing them; a fresh yt-dlp fetch
-    resolves it (same convention as the documented "stream URL expired"
-    edge case for extraction). Each timestamp gets SCENE_SEEK_OFFSET added
-    so the later seek lands on the settled new screen, clamped to duration.
-    0.0 is prepended so the opening screen is always captured;
-    apply_min_gap() collapses it with an early first detection.
-    """
-    # Detection decodes the whole video; 360p runs several-x realtime, so
-    # wall-clock ~= duration is a generous ceiling. Floor 300s, cap 30 min.
-    timeout = min(1800, max(300, int(duration or 0)))
-
-    proc = None
-    for attempt in (1, 2):
-        # Fetch inside the loop: the retry's whole point is a FRESH URL.
-        stream_url = get_lowres_stream_url(url)
-        if not stream_url:
-            msg = "Could not fetch low-res stream URL for scene detection."
-            warnings.append(msg)
-            print(f"ERROR: {msg}", file=sys.stderr)
-            return []
-
-        cmd = [
-            "ffmpeg",
-            "-hide_banner", "-loglevel", "error",
-            "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-            "-i", stream_url,
-            "-an",
-            "-vf", f"select='gt(scene,{threshold})',metadata=print:file=-",
-            "-f", "null", "-",
-        ]
-
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            msg = (
-                f"Scene detection timed out (>{timeout}s) — re-run with "
-                "`--screenshots chapters` or explicit timestamps."
-            )
-            warnings.append(msg)
-            print(f"WARNING: {msg}", file=sys.stderr)
-            return []
-
-        if proc.returncode == 0:
-            break
-
-        if attempt == 1 and "403" in (proc.stderr or ""):
-            print(
-                "WARNING: Scene detection got HTTP 403 — retrying once with "
-                "a fresh stream URL",
-                file=sys.stderr,
-            )
-            continue
-
-        err = proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else "unknown error"
-        msg = f"Scene detection failed: {err}"
-        warnings.append(msg)
-        print(f"WARNING: {msg}", file=sys.stderr)
-        return []
-
-    detected = parse_scene_timestamps(proc.stdout)
-    offset_applied = [
-        min(duration, ts + SCENE_SEEK_OFFSET) if duration else ts + SCENE_SEEK_OFFSET
-        for ts in detected
-    ]
-    return [0.0] + offset_applied
 
 
 def _long_path(path: str) -> str:
@@ -952,55 +846,7 @@ def extract_screenshots(
     return results
 
 
-def compute_thumbnail(png_path: str, size: int = THUMBNAIL_SIZE) -> list[int] | None:
-    """Render a size x size grayscale thumbnail of a PNG as raw pixel values
-    via ffmpeg (no PIL dependency). Returns size*size ints (0..255), or None if
-    ffmpeg fails or the raw output has the wrong length."""
-    cmd = [
-        "ffmpeg", "-v", "error",
-        "-i", png_path,
-        "-vf", f"scale={size}:{size},format=gray",
-        "-f", "rawvideo", "-",
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=30)
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    if proc.returncode != 0 or len(proc.stdout) != size * size:
-        return None
-    return list(proc.stdout)
 
-
-def dedupe_screenshots(
-    out_dir: str,
-    screenshots: list[tuple[float, str]],
-    threshold: float = PERCEPTUAL_DEDUP_THRESHOLD,
-) -> list[tuple[float, str]]:
-    """Drop near-duplicate frames from an extracted screenshot set.
-
-    Builds a 16x16 grayscale thumbnail per file, keeps the perceptually
-    distinct ones (see ``dedupe_perceptual_indices``), deletes the dropped PNGs
-    from ``out_dir``, and returns the filtered ``[(ts, filename), ...]`` list.
-    Fail-open: if any thumbnail can't be built, every frame is kept rather than
-    risk dropping a distinct one. Original capture-order filenames are preserved
-    (gaps in the NNN prefix are cosmetic).
-    """
-    if len(screenshots) < 2:
-        return screenshots
-    thumbs = [compute_thumbnail(os.path.join(out_dir, fn)) for _, fn in screenshots]
-    if any(t is None for t in thumbs):
-        return screenshots
-    keep = set(dedupe_perceptual_indices(thumbs, threshold))
-    result: list[tuple[float, str]] = []
-    for i, (ts, filename) in enumerate(screenshots):
-        if i in keep:
-            result.append((ts, filename))
-        else:
-            try:
-                os.remove(os.path.join(out_dir, filename))
-            except OSError:
-                pass
-    return result
 
 
 def _is_chapter_aligned(
@@ -1181,10 +1027,9 @@ def main():
     parser.add_argument("url", help="YouTube URL")
     parser.add_argument("--comments", action="store_true", help="Also fetch top comments")
     parser.add_argument(
-        "--screenshots", nargs="?", const="chapters", default="chapters",
-        help="Extract screenshots. Default: 'chapters' (with fallback). "
-             "'scenes=0.04': custom threshold. Comma-separated: "
-             "0:30,2:15,5:00",
+        "--screenshots", nargs="?", const="chapters", default=None,
+        help="Extract screenshots. Comma-separated timestamps (0:30,2:15,5:00), "
+             "'chapters', or omitted to skip (reconnaissance mode).",
     )
     parser.add_argument(
         "--no-screenshots", action="store_true",
@@ -1246,29 +1091,14 @@ def main():
     video_id = extract_video_id(url)
     cached = get_cached_video(video_id) if (video_id and not args.refresh) else None
 
-    # --- Screenshot mode (parsed early — affects the stage count) ---
+    # --- Screenshot warnings and stages ---
     screenshot_warnings: list[str] = []
-    ss_mode: str | None = None
-    ss_threshold: float | None = None
-    if args.screenshots is not None:
-        try:
-            ss_mode, ss_threshold = parse_screenshots_mode(args.screenshots)
-        except ValueError:
-            ss_mode, ss_threshold = "scenes", DEFAULT_SCENE_THRESHOLD
-            msg = (
-                f"Invalid scene threshold in '{args.screenshots}' — "
-                f"using default {DEFAULT_SCENE_THRESHOLD}."
-            )
-            screenshot_warnings.append(msg)
-            print(f"WARNING: {msg}", file=sys.stderr)
 
     # --- Stage count (adaptive to enabled features) ---
     stages = ["metadata", "transcript"]
     if args.comments:
         stages.append("comments")
     if args.screenshots is not None:
-        if ss_mode == "scenes":
-            stages.append("scene-detection")
         stages.append("screenshots")
     if args.visual:
         stages.append("visual")
@@ -1340,48 +1170,20 @@ def main():
         comments = fetch_comments(url)
 
     # --- Step 4: Screenshots (optional) ---
-    # screenshot_warnings was hoisted above the stage computation so the
-    # threshold-parse fallback has a place to report.
     screenshots = []
     screenshot_requested = 0
-    screenshot_deduped = 0  # near-duplicates dropped in scenes mode
     screenshot_marker = ""  # "FFMPEG_MISSING" or "SCREENSHOTS_ASK_USER"
     if args.screenshots is not None:
         if not check_ffmpeg():
-            # Consume the reserved stage slot(s) so the final marker stays [N/N]
-            stage_idx += 2 if ss_mode == "scenes" else 1
+            stage_idx += 1
             screenshot_marker = "FFMPEG_MISSING"
             screenshot_warnings.append("ffmpeg not found — no screenshots extracted.")
             emit_stage(stage_idx, total_stages, "Screenshots skipped (ffmpeg missing)")
         else:
-            if ss_mode == "scenes":
-                stage_idx += 1
-                emit_stage(stage_idx, total_stages, "Detecting scene changes")
-                detected = detect_scene_timestamps(
-                    url, ss_threshold, meta["duration"], screenshot_warnings,
-                )
-                gapped = apply_min_gap(detected)
-                timestamps = thin_evenly(gapped)
-                if len(gapped) > SCENE_MAX_SCREENSHOTS:
-                    screenshot_warnings.append(
-                        f"{len(gapped)} scene changes detected — thinned evenly "
-                        f"to {SCENE_MAX_SCREENSHOTS}. Raise the threshold for "
-                        f"fewer captures (e.g. --screenshots scenes=0.05)."
-                    )
-                # Success always yields the prepended 0.0, so a single entry
-                # means nothing scored above the threshold.
-                if detected and len(timestamps) == 1:
-                    screenshot_warnings.append(
-                        f"No scene changes detected above threshold "
-                        f"{ss_threshold} — captured the opening frame only. "
-                        f"Try a lower threshold (e.g. --screenshots "
-                        f"scenes=0.01) or explicit timestamps."
-                    )
-            else:
-                timestamps = resolve_timestamps(
-                    args.screenshots, meta["chapters"], meta["duration"],
-                    screenshot_warnings,
-                )
+            timestamps = resolve_timestamps(
+                args.screenshots, meta["chapters"], meta["duration"],
+                screenshot_warnings,
+            )
             stage_idx += 1
             if timestamps == "ASK_USER":
                 screenshot_marker = "SCREENSHOTS_ASK_USER"
@@ -1397,21 +1199,10 @@ def main():
                     url, timestamps, out_dir, meta["chapters"],
                     screenshot_warnings,
                 )
-                # Scenes mode can fire on near-identical frames (held slides,
-                # sub-threshold changes). Drop perceptual duplicates. Explicit
-                # chapters/timestamps are intentional, so they are left as-is.
-                if ss_mode == "scenes" and len(screenshots) > 1:
-                    before = len(screenshots)
-                    screenshots = dedupe_screenshots(out_dir, screenshots)
-                    screenshot_deduped = before - len(screenshots)
             else:
                 emit_stage(stage_idx, total_stages, "No valid screenshot timestamps")
 
     # --- Step 4b: Visual keyframes (optional, ephemeral) ---
-    # Evenly-spaced frames extracted to a temp dir for the summarizer worker to
-    # Read. Independent of --screenshots. Fail-open: any failure yields fewer/no
-    # frames and a text-only summary, never an abort. The worker deletes the
-    # temp dir after reading; a crash before that leaks only into the OS temp dir.
     visual_frames: list[tuple[float, str]] = []
     visual_tmpdir = ""
     if args.visual:
@@ -1426,8 +1217,6 @@ def main():
             vts = evenly_spaced_timestamps(meta["duration"], VISUAL_FRAME_COUNT)
             if vts:
                 visual_tmpdir = tempfile.mkdtemp(prefix="ytbknot-visual-")
-                # chapters=[] → plain NNN_ts.png names; warnings discarded (visual
-                # is internal/fail-open, its failures are not user-facing notes).
                 visual_frames = extract_screenshots(url, vts, visual_tmpdir, [], [])
                 if not visual_frames:
                     shutil.rmtree(visual_tmpdir, ignore_errors=True)
@@ -1438,11 +1227,12 @@ def main():
     emit_stage(stage_idx, total_stages, "Writing output")
 
     # --- Output structured markdown ---
-
+    chunks = chunk_transcript(segments, meta["duration"], DEFAULT_CHUNK_MINUTES, meta["chapters"])
     sections = [
         render_metadata(meta),
         render_description(meta["description"]),
         render_chapters(meta["chapters"]),
+        render_transcript_chunks(chunks),
         render_transcript_info(sub_hint, meta["duration"]),
         render_transcript(transcript, segments, screenshots, meta["chapters"]),
         render_screenshots_section(
@@ -1458,7 +1248,7 @@ def main():
             screenshot_requested,
             screenshots,
             screenshot_warnings,
-            deduped=screenshot_deduped,
+            deduped=0,
         ),
         render_keyframes(visual_tmpdir, visual_frames),
         render_comments(args.comments, comments),

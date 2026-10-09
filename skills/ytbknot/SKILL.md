@@ -2,7 +2,7 @@
 name: ytbknot
 description: "Trích xuất và chuyển đổi video YouTube thành tài liệu học tập kỹ thuật chuyên sâu bằng Tiếng Việt cho Antigravity (AGY). AI tự động phân tích kịch bản để chụp chính xác các khung hình kỹ thuật (code, terminal, sơ đồ), lưu bộ ảnh độc lập, bài note 2 tầng thuần Việt, không emoji, tiêu đề ngắn gọn."
 user-invocable: true
-argument-hint: "<youtube-url> [url2] [url3] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|scenes|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
+argument-hint: "<youtube-url> [url2] [url3] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
 allowed-tools: "run_command, view_file, write_to_file, ask_question"
 ---
 
@@ -22,27 +22,36 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
    ```bash
    ytbknot "[URL]" --no-save --clean-ads
    ```
-2. Đọc metadata và transcript từ kết quả trả về để xác định độ dài, số lượng chương và ngữ cảnh bài giảng.
+2. Đọc metadata, danh sách chương và các khối kịch bản (`Semantic Chunks`) từ kết quả trả về.
+
+---
+
+## Phân khối bài giảng
+
+Để bảo toàn 100% độ bao phủ và chiều sâu bài học, tránh hiện tượng trôi ngữ cảnh (Context Drift) với video dài:
+- **Video dưới 45 phút**: Xử lý liền mạch toàn bộ bài giảng trong một chu trình.
+- **Video trên 45 phút hoặc nhiều câu hỏi**:
+  - Dựa vào danh sách `Semantic Chunks` (15-20 phút mỗi khối) hoặc cấu trúc câu hỏi (ví dụ `Question 101`, `Part 5`...).
+  - Xử lý bóc tách chi tiết (Tầng 2) lần lượt theo từng khối, ghi nhận đầy đủ đề bài, giải thích phương án và kiến thức mở rộng.
 
 ---
 
 ## Trích xuất ảnh
 
-Dựa trên kết quả trinh sát, AI tự động chọn 1 trong 3 nhánh thực thi:
+**Quy tắc chọn khung hình:**
+- **Không chụp đầu chương**: Giây bắt đầu chương hầu hết là slide tiêu đề hoặc người nói chuyện, không chứa nội dung kỹ thuật. Phân đoạn chương chỉ dùng để chia mục lục bài viết.
+- **Bắt trúng hành động**: Khung hình bắt buộc phải chứa câu lệnh terminal, giao diện mã nguồn trong IDE, sơ đồ kiến trúc hoặc câu hỏi bài tập.
+- **Tua nhanh trực tiếp**: Luôn sử dụng danh sách mốc thời gian cụ thể để ffmpeg nhảy cóc tức thời qua HTTP Range (1-2 giây mỗi ảnh), loại bỏ hoàn toàn nguy cơ bị YouTube bóp băng thông.
 
-1. **Nhánh có phân đoạn**: Nếu video có từ 3 chương trở lên với mốc thời gian cụ thể:
-   ```bash
-   ytbknot "[URL]" --screenshots chapters --force
-   ```
-2. **Nhánh kịch bản kỹ thuật**: Nếu video không có phân đoạn nhưng có phụ đề:
-   - AI rà soát kịch bản tìm 5 đến 10 mốc thời gian xuất hiện thao tác terminal, soạn thảo code hoặc sơ đồ kiến trúc.
-   - Loại bỏ hoàn toàn các phân đoạn tác giả chỉ nói chuyện (talking head).
+**Quy trình thực thi:**
+1. **Trích xuất theo kịch bản (Bắt buộc)**:
+   - Trong từng khối kịch bản, AI xác định chính xác các mốc giây xuất hiện câu hỏi hoặc thao tác kỹ thuật thực tế.
+   - Loại bỏ hoàn toàn các phân đoạn nói chuyện phiếm (talking head).
    - Chạy lệnh trích xuất chính xác các mốc đã lọc (sử dụng lại cache, không tải lại YouTube):
    ```bash
    ytbknot "[URL]" --screenshots "<ts1>,<ts2>,<ts3>,..." --force
    ```
-3. **Nhánh ngoại lệ**: Chỉ kích hoạt khi video không có phụ đề hoặc thời lượng vượt quá 2 giờ:
-   - Gọi công cụ `ask_question` để người dùng chọn: tóm tắt lý thuyết, quét chuyển cảnh chuyên sâu (`--screenshots scenes`), hoặc nhập mốc thời gian thủ công.
+2. **Nhánh ngoại lệ**: Khi video không có bất kỳ phụ đề nào, gọi công cụ `ask_question` để người dùng cung cấp tài liệu hoặc nhập mốc thời gian thủ công.
 
 ---
 
@@ -52,7 +61,7 @@ Dựa trên kết quả trinh sát, AI tự động chọn 1 trong 3 nhánh th�
 - **Tuyệt đối không emoji/icon trang trí**.
 - **Tiêu đề H2, H3 cực kỳ ngắn gọn (2-4 từ, thuần Việt, không chèn tiếng Anh trong ngoặc đơn)**.
 - **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút nắm 100% tinh hoa, quy tắc và kiến trúc cốt lõi.
-- **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng phân đoạn, gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
+- **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng khối / từng câu hỏi, gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
 - Bố cục bắt buộc: Thuật ngữ -> Tổng luận chuyên đề -> Bóc tách chi tiết -> Trích dẫn then chốt -> Lệnh &amp; Công cụ -> Đánh đổi & Rủi ro.
 
 ---
