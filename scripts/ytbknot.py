@@ -833,10 +833,9 @@ def resolve_timestamps(
 
 
 def get_stream_url(url: str) -> str | None:
-    """Get direct video stream URL via yt-dlp -g."""
+    """Get direct video stream URL via yt-dlp -g (1080p Full HD quality)."""
     result = run_ytdlp([
-        "-g", "-f", "bestvideo[height<=720]/bestvideo/best[height<=720]/best",
-        "--extractor-args", "youtube:player_client=android",
+        "-g", "-f", "bestvideo[height<=1080]/bestvideo/best",
         "--no-playlist", "--no-warnings", url,
     ])
     if result.returncode != 0:
@@ -1132,6 +1131,14 @@ def main():
              "If specified, folder is placed under '<output-base>/<category>/'.",
     )
     parser.add_argument(
+        "--playlist-title", default=None,
+        help="Explicit playlist title for series organization.",
+    )
+    parser.add_argument(
+        "--playlist-index", type=int, default=None,
+        help="Explicit index/position of the video within the playlist.",
+    )
+    parser.add_argument(
         "--force", action="store_true",
         help="Overwrite existing target folder. Without this flag the script "
              "exits with code 2 + 'FOLDER_EXISTS: <path>' on stderr when the "
@@ -1206,6 +1213,11 @@ def main():
             sys.exit(1)
 
     # --- Compute target folder hierarchy ---
+    if args.playlist_title:
+        meta["playlist_title"] = args.playlist_title
+    if args.playlist_index is not None:
+        meta["playlist_index"] = args.playlist_index
+
     cat_dir = os.path.join(args.output_base, slugify(args.category)) if args.category else args.output_base
     slug = slugify(meta["title"])
     pl_title = meta.get("playlist_title")
