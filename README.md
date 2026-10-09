@@ -41,7 +41,7 @@ node --version
 ├── rules/
 │   └── AGENTS.md
 ├── scripts/
-│   └── yt-extract.py
+│   └── ytbknot.py
 └── skills/
     └── ytbknot/
         ├── SKILL.md
@@ -90,11 +90,11 @@ Lệnh thực thi CLI được gắn sẵn vào PATH: `ytbknot` (tại `~/.local
 Mỗi video được lưu trong một thư mục bài học riêng biệt:
 
 ```text
-yt-extract_YYYY-MM-DD_slug-video/
+ytbknot_YYYY-MM-DD_slug-video/
 ├── screenshots/                     # Kho ảnh chụp màn hình độc lập
 │   ├── 001_07m34s.png
 │   ├── 002_15m09s.png
 │   └── ...
 ├── thumbnail.jpg                    # Ảnh bìa HD
-└── yt-extract_YYYY-MM-DD_slug.md    # Bài note 2 tầng chuẩn kỹ thuật
+└── ytbknot_YYYY-MM-DD_slug.md       # Bài note 2 tầng chuẩn kỹ thuật
 ```

@@ -19,7 +19,7 @@ Before asking the user anything, verify that the install command in `options` ca
 ```
 [dep_name] requires Homebrew to install on macOS, but Homebrew is not present on this system.
 
-Install Homebrew first by following the instructions at https://brew.sh (a single curl command), then re-run /yt-extract.
+Install Homebrew first by following the instructions at https://brew.sh (a single curl command), then re-run /ytbknot.
 ```
 
 In practice this triggers only for ffmpeg — yt-dlp on macOS has both `brew` and `pip3` options in the Step 0.2 matrix, so the probe short-circuits to Step A (which offers pip3 as a valid alternative).
@@ -36,7 +36,7 @@ I cannot run `sudo` from here without blocking on the password prompt. Please in
   - sudo apt install -y ffmpeg    (Debian/Ubuntu)
   - sudo dnf install -y ffmpeg    (Fedora/RHEL)
 
-Then re-run /yt-extract.
+Then re-run /ytbknot.
 
 Docs: https://ffmpeg.org/download.html
 ```
@@ -75,7 +75,7 @@ AskUserQuestion
     - [options[0].command]
     - [options[1].command]   (if present)
 
-  Then re-run /yt-extract.
+  Then re-run /ytbknot.
 
   Docs: [doc_url]
   ```
@@ -109,7 +109,7 @@ Otherwise (non-Windows, or Step W declined recovery) → proceed to Step E.
 Installation completed but [dep_name] is still not on PATH.
 
 This usually means the shell hasn't picked up the new PATH entry yet.
-Please restart your terminal and re-run /yt-extract.
+Please restart your terminal and re-run /ytbknot.
 
 If the problem persists, install [dep_name] manually:
   - [options[0].command]
@@ -154,7 +154,7 @@ Recovers from the case where `winget` (or another Windows installer) placed the 
 
 **Returns one of:** `recovered` (Stage 1 succeeded, Bash sees the binary) / `staged_for_restart` (Stage 2 succeeded, user must restart Claude Code) / `not_found` (no recovery possible) / `copy_failed` (mechanical copy/registry failure).
 
-> **PowerShell quoting note.** Three quoting layers (Claude Code Bash → cmd.exe wrapper → powershell.exe) make long `-Command` strings fragile. **Preferred primary path:** write the PowerShell script into a temp `.ps1` file (e.g. via Bash heredoc to `$TEMP\yt-extract-recovery-<rand>.ps1`) and execute with `powershell -NoProfile -ExecutionPolicy Bypass -File <tmp>`. Use single-line `-Command` only for trivial calls.
+> **PowerShell quoting note.** Three quoting layers (Claude Code Bash → cmd.exe wrapper → powershell.exe) make long `-Command` strings fragile. **Preferred primary path:** write the PowerShell script into a temp `.ps1` file (e.g. via Bash heredoc to `$TEMP\ytbknot-recovery-<rand>.ps1`) and execute with `powershell -NoProfile -ExecutionPolicy Bypass -File <tmp>`. Use single-line `-Command` only for trivial calls.
 
 ### W.1 — Locate the binary
 
@@ -269,7 +269,7 @@ Recovery configured your user PATH:
   - Copied [binaries] to %LOCALAPPDATA%\Microsoft\WinGet\Links\
   - Added that directory to your user PATH (Registry)
 
-Please RESTART Claude Code, then re-run /yt-extract.
+Please RESTART Claude Code, then re-run /ytbknot.
 After restart, future winget installs will also work without this recovery step.
 ```
 

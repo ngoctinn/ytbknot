@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-yt-extract.py — Single-call YouTube video data extractor for yt-extract.
+ytbknot.py — Single-call YouTube video data extractor for ytbknot.
 Handles metadata, transcript, optional comments, and optional screenshots.
 Returns structured markdown to stdout.
 
 Usage:
-    python yt-extract.py <URL> [--comments] [--screenshots [TIMESTAMPS]]
+    python ytbknot.py <URL> [--comments] [--screenshots [TIMESTAMPS]]
 """
 
 from __future__ import annotations
@@ -47,9 +47,36 @@ THUMBNAIL_SIZE = 16
 VISUAL_FRAME_COUNT = 4
 
 
+def find_node_path() -> str | None:
+    found = shutil.which("node")
+    if found:
+        return found
+    candidates = [
+        os.path.expanduser("~/.nvm/versions/node"),
+        os.path.expanduser("~/.asdf/shims/node"),
+        os.path.expanduser("~/.volta/bin/node"),
+        os.path.expanduser("~/.fnm/current/bin/node"),
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+        if os.path.isdir(c):
+            try:
+                subdirs = sorted(os.listdir(c), reverse=True)
+                for s in subdirs:
+                    p = os.path.join(c, s, "bin", "node")
+                    if os.path.isfile(p) and os.access(p, os.X_OK):
+                        return p
+            except Exception:
+                pass
+    return None
+
+
 def run_ytdlp(args: list[str]) -> subprocess.CompletedProcess:
     cmd = ["yt-dlp"]
-    node_path = shutil.which("node") or "/home/ngoctin/.nvm/versions/node/v24.21.0/bin/node"
+    node_path = find_node_path()
     if node_path and os.path.exists(node_path):
         cmd.extend(["--js-runtimes", f"node:{node_path}"])
     cmd.extend(args)
@@ -85,7 +112,7 @@ def extract_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-CACHE_DIR = os.path.expanduser("~/.gemini/config/plugins/yt-extract/cache")
+CACHE_DIR = os.path.expanduser("~/.gemini/config/plugins/ytbknot/cache")
 
 
 def get_cached_video(video_id: str) -> dict | None:
@@ -412,7 +439,7 @@ def download_and_process_vtt(url: str, video_id: str) -> tuple[str, str, list[tu
 
     result = run_ytdlp([
         "--write-auto-subs", "--write-subs",
-        "--sub-langs", ".*orig,en",
+        "--sub-langs", ".*orig,vi.*,en.*",
         "--sub-format", "vtt", "--convert-subs", "vtt",
         "--skip-download", "--no-playlist", "--no-warnings",
         "-o", f"{prefix}.%(ext)s",
@@ -1120,7 +1147,7 @@ def run_transcript_only(args: argparse.Namespace) -> None:
     slug = video_id or ("video-" + slugify(url, 40))
 
     date_str = datetime.date.today().isoformat()
-    target = os.path.join(args.output_base, f"yt-extract_{date_str}_{slug}")
+    target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
 
     # Collision guard before any work — so a re-run without --force does not
     # emit a stage marker for work it never starts.
@@ -1170,7 +1197,7 @@ def main():
     parser.add_argument(
         "--output-base", default=".",
         help="Base directory for the output folder (default: current directory). "
-             "Script creates '<base>/yt-extract_<date>_<slug>/' inside it.",
+             "Script creates '<base>/ytbknot_<date>_<slug>/' inside it.",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -1258,7 +1285,7 @@ def main():
     # --- Compute target folder ---
     date_str = datetime.date.today().isoformat()
     slug = slugify(meta["title"])
-    target = os.path.join(args.output_base, f"yt-extract_{date_str}_{slug}")
+    target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
 
     # --- Collision guard ---
     if os.path.isdir(target) and not args.force:
@@ -1391,7 +1418,7 @@ def main():
             )
             vts = evenly_spaced_timestamps(meta["duration"], VISUAL_FRAME_COUNT)
             if vts:
-                visual_tmpdir = tempfile.mkdtemp(prefix="yt-extract-visual-")
+                visual_tmpdir = tempfile.mkdtemp(prefix="ytbknot-visual-")
                 # chapters=[] → plain NNN_ts.png names; warnings discarded (visual
                 # is internal/fail-open, its failures are not user-facing notes).
                 visual_frames = extract_screenshots(url, vts, visual_tmpdir, [], [])
