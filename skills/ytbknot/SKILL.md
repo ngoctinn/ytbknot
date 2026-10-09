@@ -2,7 +2,7 @@
 name: ytbknot
 description: "Trích xuất và chuyển đổi video YouTube thành tài liệu học tập kỹ thuật chuyên sâu bằng Tiếng Việt cho Antigravity (AGY). AI tự động phân tích kịch bản để chụp chính xác các khung hình kỹ thuật (code, terminal, sơ đồ), lưu bộ ảnh độc lập, bài note 2 tầng thuần Việt, không emoji, tiêu đề ngắn gọn."
 user-invocable: true
-argument-hint: "<youtube-url> [url2] [url3] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
+argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
 allowed-tools: "run_command, view_file, write_to_file, ask_question"
 ---
 
@@ -22,7 +22,16 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
    ```bash
    ytbknot "[URL]" --no-save --clean-ads
    ```
-2. Đọc metadata, danh sách chương và các khối kịch bản (`Semantic Chunks`) từ kết quả trả về.
+2. Đọc kết quả từ đầu ra:
+   - Metadata: tiêu đề, thời lượng, chương mục, `playlist_title`, `playlist_index`, `tags`.
+   - `EXISTING_CATEGORIES`: Danh sách các danh mục chủ đề sẵn có tại thư mục lưu trữ hiện tại.
+   - Các khối kịch bản (`Semantic Chunks`) và nội dung chi tiết.
+
+3. **Phân loại danh mục học tập (Adaptive Taxonomy):**
+   - Nếu người dùng truyền `--category <tên>`: Sử dụng danh mục được chỉ định.
+   - Nếu không có tham số: AI đối chiếu nội dung bài giảng và tags với `EXISTING_CATEGORIES`.
+     * Tái sử dụng danh mục có sẵn nếu cùng chủ đề (ví dụ đã có `toeic`, `system-design`...).
+     * Nếu là chủ đề mới: Tự động đề xuất slug danh mục ngắn gọn (viết thường, gạch nối, ví dụ: `toeic`, `devops`, `ai-ml`, `economics`).
 
 ---
 
@@ -36,7 +45,7 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ---
 
-## Trích xuất ảnh
+## Trích xuất ảnh & Tổ chức thư mục
 
 **Quy tắc chọn khung hình theo ngữ cảnh:**
 - **Không chụp đầu chương**: Giây bắt đầu chương hầu hết là slide tiêu đề hoặc người nói chuyện, không chứa nội dung kỹ thuật. Phân đoạn chương chỉ dùng để chia mục lục bài viết.
@@ -48,12 +57,15 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 **Quy trình thực thi:**
 1. **Trích xuất theo kịch bản (Bắt buộc)**:
-   - Trong từng khối kịch bản, AI xác định chính xác các mốc giây tối ưu theo ngữ cảnh (cuối lời giải cho bài giảng slide/giải đề; sau khi chạy lệnh cho live-coding).
+   - Trong từng khối kịch bản, AI xác định chính xác các mốc giây tối ưu theo ngữ cảnh.
    - Loại bỏ hoàn toàn các phân đoạn nói chuyện phiếm (talking head).
-   - Chạy lệnh trích xuất chính xác các mốc đã lọc (sử dụng lại cache, không tải lại YouTube):
+   - Chạy lệnh trích xuất chính thức với danh mục và mốc thời gian (dùng lại cache, không tải lại YouTube):
    ```bash
-   ytbknot "[URL]" --screenshots "<ts1>,<ts2>,<ts3>,..." --force
+   ytbknot "[URL]" --category "<category>" --screenshots "<ts1>,<ts2>,<ts3>,..." --force
    ```
+   - Thư mục được tự động tổ chức chuyên nghiệp:
+     * Video đơn lẻ: `<output-base>/<category>/<slug>/`
+     * Playlist: `<output-base>/<category>/<playlist-slug>/<index>_<slug>/` kèm file tổng quan `<playlist-slug>/00_overview.md`.
 2. **Nhánh ngoại lệ**: Khi video không có bất kỳ phụ đề nào, gọi công cụ `ask_question` để người dùng cung cấp tài liệu hoặc nhập mốc thời gian thủ công.
 
 ---
@@ -65,10 +77,10 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 - **Tiêu đề H2, H3 cực kỳ ngắn gọn (2-4 từ, thuần Việt, không chèn tiếng Anh trong ngoặc đơn)**.
 - **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút nắm 100% tinh hoa, quy tắc và kiến trúc cốt lõi.
 - **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng khối / từng câu hỏi, gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
-- Bố cục bắt buộc: Thuật ngữ -> Tổng luận chuyên đề -> Bóc tách chi tiết -> Trích dẫn then chốt -> Lệnh &amp; Công cụ -> Đánh đổi & Rủi ro.
+- Bố cục bắt buộc: Thuật ngữ -> Tổng luận chuyên đề -> Bóc tách chi tiết -> Trích dẫn then chốt -> Lệnh & Công cụ -> Đánh đổi & Rủi ro.
 
 ---
 
 ## Báo cáo kết quả
 
-Lưu file ghi chú vào `<OUTPUT_FOLDER>/<slug>.md` và thông báo cho người dùng đường dẫn thư mục bài học cùng số lượng ảnh đã trích xuất.
+Lấy giá trị `OUTPUT_FOLDER` từ đầu ra của lệnh, lưu file ghi chú vào `<OUTPUT_FOLDER>/<slug>.md` và thông báo cho người dùng đường dẫn thư mục bài học cùng số lượng ảnh đã trích xuất.

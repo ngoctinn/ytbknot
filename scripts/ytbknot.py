@@ -242,20 +242,54 @@ def format_date(upload_date: str) -> str:
     return upload_date
 
 
-def render_metadata(meta: dict) -> str:
-    return "\n".join([
+def discover_categories(base_dir: str) -> list[str]:
+    """Scan base_dir for existing non-hidden top-level category directories."""
+    if not os.path.isdir(base_dir):
+        return []
+    ignored = {
+        "screenshots", "cache", "rules", "scripts", "skills",
+        "tests", "docs", "node_modules", "__pycache__", "venv",
+        ".git", ".gemini", ".coding-friend", ".system_generated"
+    }
+    try:
+        entries = sorted(os.listdir(base_dir))
+        cats = [
+            e for e in entries
+            if os.path.isdir(os.path.join(base_dir, e))
+            and not e.startswith(".")
+            and e not in ignored
+        ]
+        return cats
+    except OSError:
+        return []
+
+
+def render_metadata(meta: dict, category: str | None = None) -> str:
+    lines = [
         "### Metadata",
         f"title: {meta['title']}",
         f"channel: {meta['channel']}",
-        f"date: {format_date(meta['upload_date'])}",
-        f"duration: {meta['duration_string']}",
-        f"duration_seconds: {meta['duration']}",
-        f"views: {meta['view_count']}",
-        f"likes: {meta['like_count']}",
-        f"is_live: {meta['is_live']}",
-        f"was_live: {meta['was_live']}",
+        f"date: {format_date(meta.get('upload_date', ''))}",
+        f"duration: {meta.get('duration_string', '')}",
+        f"duration_seconds: {meta.get('duration', 0)}",
+        f"views: {meta.get('view_count', 0)}",
+        f"likes: {meta.get('like_count', 0)}",
+    ]
+    if category:
+        lines.append(f"category: {category}")
+    if meta.get("playlist_title"):
+        lines.append(f"playlist: {meta['playlist_title']}")
+    if meta.get("playlist_index"):
+        lines.append(f"playlist_index: {meta['playlist_index']}")
+    if meta.get("tags"):
+        tags_str = ", ".join(meta["tags"][:8]) if isinstance(meta["tags"], list) else str(meta["tags"])
+        lines.append(f"tags: [{tags_str}]")
+    lines.extend([
+        f"is_live: {meta.get('is_live', False)}",
+        f"was_live: {meta.get('was_live', False)}",
         "",
     ])
+    return "\n".join(lines)
 
 
 def render_description(description: str) -> str:
@@ -413,9 +447,56 @@ def extract_metadata(url: str) -> dict | None:
             "was_live": d.get("was_live", False),
             "chapters": d.get("chapters") or [],
             "thumbnail": d.get("thumbnail", ""),
+            "playlist_title": d.get("playlist_title") or d.get("playlist") or "",
+            "playlist_id": d.get("playlist_id") or "",
+            "playlist_index": d.get("playlist_index"),
+            "tags": d.get("tags") or [],
         }
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+def update_playlist_overview(pl_dir: str, meta: dict, category: str | None = None) -> None:
+    """Create or update 00_overview.md in the playlist directory."""
+    overview_path = os.path.join(pl_dir, "00_overview.md")
+    pl_title = meta.get("playlist_title") or "Danh sách bài giảng"
+    channel = meta.get("channel", "Không rõ")
+    cat_str = category if category else "Chung"
+    idx = meta.get("playlist_index")
+    idx_str = f"{idx:02d}" if isinstance(idx, int) else "01"
+    item_line = f"- [{idx_str}] {meta.get('title', '')}"
+
+    if not os.path.isfile(overview_path):
+        content = [
+            f"# {pl_title}",
+            "",
+            f"* **Kênh:** {channel}",
+            f"* **Danh mục:** {cat_str}",
+            "",
+            "---",
+            "",
+            "## Danh sách bài học",
+            item_line,
+            "",
+        ]
+        try:
+            with open(overview_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(content))
+        except OSError:
+            pass
+    else:
+        try:
+            with open(overview_path, "r", encoding="utf-8") as f:
+                existing = f.read()
+            if meta.get("title") and meta["title"] not in existing:
+                if "## Danh sách bài học" in existing:
+                    updated = existing.rstrip() + f"\n{item_line}\n"
+                else:
+                    updated = existing.rstrip() + f"\n\n## Danh sách bài học\n{item_line}\n"
+                with open(overview_path, "w", encoding="utf-8") as f:
+                    f.write(updated)
+        except OSError:
+            pass
 
 
 def download_and_process_vtt(url: str, video_id: str) -> tuple[str, str, list[tuple[float, str]]]:
@@ -755,6 +836,7 @@ def get_stream_url(url: str) -> str | None:
     """Get direct video stream URL via yt-dlp -g."""
     result = run_ytdlp([
         "-g", "-f", "bestvideo[height<=720]/bestvideo/best[height<=720]/best",
+        "--extractor-args", "youtube:player_client=android",
         "--no-playlist", "--no-warnings", url,
     ])
     if result.returncode != 0:
@@ -1042,7 +1124,12 @@ def main():
     parser.add_argument(
         "--output-base", default=".",
         help="Base directory for the output folder (default: current directory). "
-             "Script creates '<base>/ytbknot_<date>_<slug>/' inside it.",
+             "Script creates '<base>/[category]/[playlist]/<slug>/' inside it.",
+    )
+    parser.add_argument(
+        "--category", default=None,
+        help="Category or subject domain for the lecture (e.g. 'toeic', 'system-design'). "
+             "If specified, folder is placed under '<output-base>/<category>/'.",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -1118,16 +1205,29 @@ def main():
             print(f"ERROR: Could not fetch metadata for {url}")
             sys.exit(1)
 
-    # --- Compute target folder ---
-    date_str = datetime.date.today().isoformat()
+    # --- Compute target folder hierarchy ---
+    cat_dir = os.path.join(args.output_base, slugify(args.category)) if args.category else args.output_base
     slug = slugify(meta["title"])
-    target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
+    pl_title = meta.get("playlist_title")
+
+    if pl_title:
+        pl_dir = os.path.join(cat_dir, slugify(pl_title))
+        pl_idx = meta.get("playlist_index")
+        prefix = f"{pl_idx:02d}_" if isinstance(pl_idx, int) else ""
+        target = os.path.join(pl_dir, f"{prefix}{slug}")
+    else:
+        pl_dir = None
+        target = os.path.join(cat_dir, slug)
 
     # --- Collision guard & Target folder creation ---
     if not args.no_save:
         if os.path.isdir(target) and not args.force:
             print(f"FOLDER_EXISTS: {target}", file=sys.stderr, flush=True)
             sys.exit(2)
+
+        if pl_dir:
+            os.makedirs(pl_dir, exist_ok=True)
+            update_playlist_overview(pl_dir, meta, args.category)
 
         os.makedirs(target, exist_ok=True)
 
@@ -1229,7 +1329,7 @@ def main():
     # --- Output structured markdown ---
     chunks = chunk_transcript(segments, meta["duration"], DEFAULT_CHUNK_MINUTES, meta["chapters"])
     sections = [
-        render_metadata(meta),
+        render_metadata(meta, args.category),
         render_description(meta["description"]),
         render_chapters(meta["chapters"]),
         render_transcript_chunks(chunks),
@@ -1261,6 +1361,11 @@ def main():
     print()
     if args.no_save:
         print(f"OUTPUT_FOLDER: NONE (recon mode, cached {meta.get('id', '')})")
+        existing_cats = discover_categories(args.output_base)
+        if existing_cats:
+            print(f"EXISTING_CATEGORIES: {', '.join(existing_cats)}")
+        else:
+            print("EXISTING_CATEGORIES: NONE")
     else:
         print(f"OUTPUT_FOLDER: {target.replace(os.sep, '/')}")
 

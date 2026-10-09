@@ -81,6 +81,16 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
   ytbknot "https://www.youtube.com/watch?v=..." --screenshots "1:15,4:30,9:45" --force
   ```
 
+* **Trích xuất theo danh mục chuyên đề:**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --category "toeic" --screenshots "1:15,4:30,9:45" --force
+  ```
+
+* **Chỉ định thư mục gốc lưu trữ bài học (mặc định là thư mục hiện tại `.`):**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --output-base ~/Lectures --category "system-design"
+  ```
+
 * **Chụp ảnh theo chu kỳ thời gian:**
   ```bash
   ytbknot "https://www.youtube.com/watch?v=..." --interval 60 --clean-ads
@@ -95,14 +105,30 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
 
 ## 4. Cấu trúc kết quả đầu ra
 
-Mỗi video được lưu trong một thư mục bài học riêng biệt:
+Hệ thống phân cấp thư mục tự thích ứng (tối đa 2 tầng) giúp dễ dàng quản lý đa lĩnh vực và trọn bộ khóa học (Playlist):
 
+### Video đơn lẻ có phân loại danh mục:
 ```text
-ytbknot_YYYY-MM-DD_slug-video/
-├── screenshots/                     # Kho ảnh chụp màn hình độc lập
-│   ├── 001_07m34s.png
-│   ├── 002_15m09s.png
-│   └── ...
-├── thumbnail.jpg                    # Ảnh bìa HD
-└── ytbknot_YYYY-MM-DD_slug.md       # Bài note 2 tầng chuẩn kỹ thuật
+toeic/
+└── giai-chi-tiet-de-thi-part-5/
+    ├── screenshots/                 # Bộ ảnh chụp màn hình kỹ thuật độc lập
+    │   ├── 001_07m34s.png
+    │   └── ...
+    ├── thumbnail.jpg                # Ảnh bìa HD
+    └── giai-chi-tiet-de-thi-part-5.md # Ghi chú 2 tầng chuẩn kỹ thuật
+```
+
+### Danh sách phát (Playlist / Series khóa học):
+```text
+system-design/
+└── microservices-tu-co-ban-den-nang-cao/
+    ├── 00_overview.md               # Mục lục tổng quan khóa học & tiến độ
+    ├── 01_kien-truc-tong-quan/
+    │   ├── screenshots/
+    │   ├── thumbnail.jpg
+    │   └── 01_kien-truc-tong-quan.md
+    └── 02_message-queue-kafka/
+        ├── screenshots/
+        ├── thumbnail.jpg
+        └── 02_message-queue-kafka.md
 ```
