@@ -1225,9 +1225,15 @@ def main():
         "--refresh", action="store_true",
         help="Bypass local cache and force re-fetching all data from YouTube.",
     )
+    parser.add_argument(
+        "--no-save", action="store_true",
+        help="Do not create target folder or save thumbnail; print output and cache only.",
+    )
     args = parser.parse_args()
 
-    if args.no_screenshots:
+    if args.no_save:
+        args.screenshots = None
+    elif args.no_screenshots:
         args.screenshots = None
     elif args.interval:
         args.screenshots = f"interval={args.interval}"
@@ -1287,16 +1293,17 @@ def main():
     slug = slugify(meta["title"])
     target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
 
-    # --- Collision guard ---
-    if os.path.isdir(target) and not args.force:
-        print(f"FOLDER_EXISTS: {target}", file=sys.stderr, flush=True)
-        sys.exit(2)
+    # --- Collision guard & Target folder creation ---
+    if not args.no_save:
+        if os.path.isdir(target) and not args.force:
+            print(f"FOLDER_EXISTS: {target}", file=sys.stderr, flush=True)
+            sys.exit(2)
 
-    os.makedirs(target, exist_ok=True)
+        os.makedirs(target, exist_ok=True)
 
-    # Download thumbnail if present
-    if meta.get("thumbnail"):
-        download_thumbnail(meta["thumbnail"], target)
+        # Download thumbnail if present
+        if meta.get("thumbnail"):
+            download_thumbnail(meta["thumbnail"], target)
 
     # --- Step 2: Transcript ---
     stage_idx += 1
@@ -1462,7 +1469,10 @@ def main():
     # Forward slashes so the marker is stable across platforms — the skill
     # parses this line verbatim to decide where to write the MD file.
     print()
-    print(f"OUTPUT_FOLDER: {target.replace(os.sep, '/')}")
+    if args.no_save:
+        print(f"OUTPUT_FOLDER: NONE (recon mode, cached {meta.get('id', '')})")
+    else:
+        print(f"OUTPUT_FOLDER: {target.replace(os.sep, '/')}")
 
 
 if __name__ == "__main__":

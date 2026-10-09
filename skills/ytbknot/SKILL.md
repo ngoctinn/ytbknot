@@ -8,7 +8,7 @@ allowed-tools: "run_command, view_file, write_to_file, ask_question"
 
 Phân tích URL YouTube từ người dùng: <user_request>$ARGUMENTS</user_request>
 
-## Bước 0 — Kiểm tra môi trường phụ thuộc
+## Kiểm tra môi trường
 
 ```bash
 python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
@@ -16,35 +16,47 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ---
 
-## Bước 1 — Lấy Metadata & Kịch bản Transcript
+## Trinh sát dữ liệu
 
-1. Chạy trích xuất metadata và transcript sạch:
+1. Chạy lệnh trinh sát nhanh chỉ lấy metadata và kịch bản sạch, tự động lưu vào cache cục bộ:
    ```bash
-   ytbknot "[URL]" --output-base "." [--clean-ads] [--interval 60] [--force]
+   ytbknot "[URL]" --no-save --clean-ads
    ```
-2. Đọc transcript để hiểu sâu toàn bộ luồng bài giảng.
+2. Đọc metadata và transcript từ kết quả trả về để xác định độ dài, số lượng chương và ngữ cảnh bài giảng.
 
 ---
 
-## Bước 2 — Trích Xuất Bộ Ảnh Độc Lập & Lọc Khung Hình Thông Minh
+## Trích xuất ảnh
 
-> **QUY TẮC BỘ ẢNH:**
-> 1. Bộ ảnh được lưu độc lập tại `<OUTPUT_FOLDER>/screenshots/`.
-> 2. Có thể dùng `--interval <giây>` (ví dụ: `--interval 60` hoặc `120`) để tự động chia nhỏ thời gian chụp dày đặc.
-> 3. AI đọc kịch bản để chọn đúng giây tác giả thực sự thao tác màn hình, cấm nhồi ảnh chân dung (talking head).
+Dựa trên kết quả trinh sát, AI tự động chọn 1 trong 3 nhánh thực thi:
+
+1. **Nhánh có phân đoạn**: Nếu video có từ 3 chương trở lên với mốc thời gian cụ thể:
+   ```bash
+   ytbknot "[URL]" --screenshots chapters --force
+   ```
+2. **Nhánh kịch bản kỹ thuật**: Nếu video không có phân đoạn nhưng có phụ đề:
+   - AI rà soát kịch bản tìm 5 đến 10 mốc thời gian xuất hiện thao tác terminal, soạn thảo code hoặc sơ đồ kiến trúc.
+   - Loại bỏ hoàn toàn các phân đoạn tác giả chỉ nói chuyện (talking head).
+   - Chạy lệnh trích xuất chính xác các mốc đã lọc (sử dụng lại cache, không tải lại YouTube):
+   ```bash
+   ytbknot "[URL]" --screenshots "<ts1>,<ts2>,<ts3>,..." --force
+   ```
+3. **Nhánh ngoại lệ**: Chỉ kích hoạt khi video không có phụ đề hoặc thời lượng vượt quá 2 giờ:
+   - Gọi công cụ `ask_question` để người dùng chọn: tóm tắt lý thuyết, quét chuyển cảnh chuyên sâu (`--screenshots scenes`), hoặc nhập mốc thời gian thủ công.
 
 ---
 
-## Bước 3 — Định dạng bài note chuẩn 2 tầng (Thuần Việt, Không Emoji)
+## Định dạng ghi chú
 
 - **100% Tiếng Việt Kỹ thuật**.
 - **Tuyệt đối không emoji/icon trang trí**.
-- **Tiêu đề H2, H3 cực kỳ ngắn gọn (2-4 từ, không ngoặc đơn tiếng Anh)**.
-- **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút nắm 100% tinh hoa và công thức.
-- **Tầng 2 (Bóc tách chi tiết từng câu / khung hình):** Đi sâu từng trường hợp, phân tích đầy đủ các phương án A-B-C-D và họ từ mở rộng.
+- **Tiêu đề H2, H3 cực kỳ ngắn gọn (2-4 từ, thuần Việt, không chèn tiếng Anh trong ngoặc đơn)**.
+- **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút nắm 100% tinh hoa, quy tắc và kiến trúc cốt lõi.
+- **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng phân đoạn, gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
+- Bố cục bắt buộc: Thuật ngữ -> Tổng luận chuyên đề -> Bóc tách chi tiết -> Trích dẫn then chốt -> Lệnh &amp; Công cụ -> Đánh đổi & Rủi ro.
 
 ---
 
-## Bước 4 — Báo cáo kết quả
+## Báo cáo kết quả
 
-Lưu file ghi chú vào `<OUTPUT_FOLDER>/<slug>.md` và thông báo cho người dùng đường dẫn thư mục bài học và số lượng ảnh đã trích xuất.
+Lưu file ghi chú vào `<OUTPUT_FOLDER>/<slug>.md` và thông báo cho người dùng đường dẫn thư mục bài học cùng số lượng ảnh đã trích xuất.
