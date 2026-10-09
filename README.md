@@ -7,13 +7,14 @@ Plugin trích xuất và chuyển đổi video YouTube thành tài liệu học 
 ## 1. Giới thiệu
 
 `ytbknot` là bộ công cụ học tập dành cho kỹ sư và người học chuyên sâu:
-* **Tự động hóa toàn diện:** Lấy phụ đề (transcript), lọc phân đoạn tài trợ/quảng cáo qua SponsorBlock, chụp khung hình kỹ thuật và tổ chức bài học thành tài liệu Markdown.
-* **Bộ ảnh độc lập:** Toàn bộ ảnh trích xuất từ video được lưu tách biệt tại thư mục `screenshots/` (hỗ trợ chụp dày theo chu kỳ `--interval`).
+* **Quy trình thích ứng 2 pha:** Trinh sát nhanh metadata và transcript trong 2-3 giây, sau đó tự động phân loại video để trích xuất khung hình chuẩn xác mà không cần người dùng cấu hình phức tạp.
+* **Tự động hóa toàn diện:** Lấy phụ đề, lọc phân đoạn tài trợ và quảng cáo qua SponsorBlock, chụp khung hình kỹ thuật và tổ chức bài học thành tài liệu Markdown.
+* **Bộ ảnh độc lập:** Toàn bộ ảnh trích xuất từ video được lưu tách biệt tại thư mục `screenshots/` (hỗ trợ phân đoạn, chu kỳ `--interval`, phát hiện chuyển cảnh `scenes` hoặc mốc chỉ định).
 * **Bài note 2 tầng chuẩn mực:**
-  * **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút để nắm trọn 100% tinh hoa, công thức và quy tắc vàng.
-  * **Tầng 2 (Bóc tách chi tiết):** Phân tích từng câu hỏi hoặc từng mốc demo: đề bài, dịch nghĩa, phân tích từng phương án A-B-C-D, họ từ mở rộng và khung hình tương ứng.
+  * **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút để nắm trọn 100% tinh hoa, công thức và quy tắc cốt lõi.
+  * **Tầng 2 (Bóc tách chi tiết):** Phân tích từng phân đoạn demo hoặc câu hỏi, đối chiếu đề bài, phương án, họ từ mở rộng và khung hình tương ứng.
 * **Tiêu chuẩn trình bày:** 100% Tiếng Việt Kỹ thuật, không dùng bất kỳ emoji trang trí nào, tiêu đề ngắn gọn thuần Việt (2-4 từ, không ngoặc đơn tiếng Anh).
-* **AI-Curated Visuals:** AI tự động đọc kịch bản để tìm đúng khoảnh khắc có thao tác kỹ thuật thật (terminal, code, sơ đồ), cấm chụp ảnh chân dung người nói (talking head).
+* **Lọc ảnh kỹ thuật:** AI tự động đọc kịch bản để tìm đúng khoảnh khắc có thao tác kỹ thuật thật (terminal, code trong IDE, sơ đồ kiến trúc), loại bỏ hoàn toàn ảnh chân dung người nói (talking head).
 
 ---
 
@@ -60,27 +61,38 @@ Lệnh thực thi CLI được gắn sẵn vào PATH: `ytbknot` (tại `~/.local
 /ytbknot https://www.youtube.com/watch?v=...
 ```
 
-### Các tùy chọn nâng cao:
+Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 pha:
+1. **Pha 1 (Trinh sát):** Tải nhanh metadata và transcript sạch (lưu cache, không chụp ảnh).
+2. **Pha 2 (Trích xuất thích ứng):**
+   * Nếu có chương: Tự động trích xuất theo chapters.
+   * Nếu không có chương: AI lọc 5-10 mốc thời gian xuất hiện thao tác kỹ thuật và chụp chính xác.
+   * Nếu ngoại lệ (không có phụ đề hoặc thời lượng > 2 giờ): Mở hộp thoại hỏi ý định người dùng.
 
-* **Chụp ảnh dày theo chu kỳ (khuyên dùng cho video bài giảng slide):**
-  ```text
-  /ytbknot https://www.youtube.com/watch?v=... --interval 60
+### Các tùy chọn qua Terminal CLI:
+
+* **Trinh sát nhanh (chỉ lấy kịch bản và cache, không tạo thư mục):**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --no-save --clean-ads
   ```
-  *(Cứ mỗi 60 giây tự động chụp 1 ảnh chất lượng cao lưu vào `screenshots/`).*
 
-* **Lọc bỏ quảng cáo & phân đoạn tài trợ (SponsorBlock):**
-  ```text
-  /ytbknot https://www.youtube.com/watch?v=... --clean-ads
+* **Trích xuất theo các mốc thời gian chỉ định (tận dụng cache):**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --screenshots "1:15,4:30,9:45" --force
+  ```
+
+* **Chụp ảnh theo chu kỳ thời gian:**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --interval 60 --clean-ads
+  ```
+
+* **Tự động quét chuyển cảnh qua ffmpeg:**
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --screenshots scenes --force
   ```
 
 * **Lấy thêm bình luận thảo luận từ cộng đồng:**
-  ```text
-  /ytbknot https://www.youtube.com/watch?v=... --comments
-  ```
-
-* **Sử dụng trực tiếp qua Terminal CLI:**
   ```bash
-  ytbknot "https://www.youtube.com/watch?v=JIVXPafQFKk" --output-base "." --interval 120 --clean-ads
+  ytbknot "https://www.youtube.com/watch?v=..." --comments
   ```
 
 ---
