@@ -1,0 +1,19 @@
+{
+  "name": "ytbknot",
+  "version": "2.2.0",
+  "description": "YouTube Knowledge & Technical Study Suite for Antigravity (AGY) — Trích xuất transcript sạch, bộ ảnh chụp độc lập, bài note kỹ thuật 2 tầng thuần Việt, không emoji.",
+  "author": {
+    "name": "Antigravity Engineering"
+  },
+  "keywords": [
+    "youtube",
+    "learning",
+    "study",
+    "notes",
+    "transcript",
+    "sponsorblock",
+    "vietnamese",
+    "antigravity",
+    "ytbknot"
+  ]
+}
