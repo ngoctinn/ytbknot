@@ -23,7 +23,23 @@ Quy tắc bắt buộc khi kích hoạt skill `ytbknot`:
 - **Cấm nhồi ảnh chân dung tác giả (Talking Head):**
   - Những phân đoạn tác giả chỉ ngồi nói chuyện chay bằng miệng mà không có màn hình code/slide: **Không chụp ảnh rác**. Chỉ tóm tắt luận điểm kỹ thuật bằng lời.
 
-## 4. Cấu Trúc Ghi Chú 2 Tầng Chuẩn Mực
+## 4. Cấu Trúc Ghi Chú Theo Mức Độ Chi Tiết
+
+Mặc định áp dụng mức độ `standard` nếu người dùng không chỉ định. Khi có yêu cầu hoặc cờ `--detail`:
+
+* **Mức độ Tóm lược (`--detail brief`):**
+  - Giữ: `Thuật ngữ`, `Tổng luận chuyên đề`, `Lệnh & Công cụ`, `Đánh đổi & Rủi ro`.
+  - Lược bỏ: Mục `Bóc tách chi tiết` để đọc nhanh trong 2-3 phút.
+  - Số lượng ảnh: Chỉ chụp 2-4 ảnh kiến trúc hoặc sơ đồ cốt lõi nhất.
+
+* **Mức độ Tiêu chuẩn (`--detail standard` - Mặc định):**
+  - Cấu trúc 2 tầng chuẩn mực: Đọc nhanh Tầng 1 và bóc tách theo từng khối 10-15 phút ở Tầng 2.
+
+* **Mức độ Siêu chi tiết (`--detail deep`):**
+  - **Dòng thời gian vi mô (Micro-timeline):** Mục `Bóc tách chi tiết` chia nhỏ theo từng mốc 1-3 phút hoặc từng câu hỏi/thao tác lệnh đơn lẻ.
+  - Mỗi tiểu mục bắt buộc gắn mốc thời gian dạng `### [HH:MM:SS] Tên phân đoạn`.
+  - Phân tích cặn kẽ 100% bối cảnh, câu lệnh, phản hồi của hệ thống, logic giải thích và các ngoại lệ/edge cases mà tác giả nhắc tới.
+  - Trích xuất ảnh dày đặc cho từng bước thực thi hoặc slide thay đổi nội dung.
 
 ```markdown
 # [Tên Video / Tiêu đề bài giảng]
@@ -40,7 +56,7 @@ Quy tắc bắt buộc khi kích hoạt skill `ytbknot`:
 (Tầng 1: Đọc nhanh 5 phút nắm 100% tinh hoa, phân loại theo 3-4 chuyên đề lớn kèm công thức và quy tắc vàng)
 
 ## Bóc tách chi tiết
-(Tầng 2: Đi sâu từng câu hỏi hoặc phân đoạn; đầy đủ đề bài, dịch nghĩa, phân tích từng phương án A-B-C-D, họ từ mở rộng và khung hình tương ứng)
+(Tầng 2: Đi sâu từng câu hỏi hoặc phân đoạn theo timeline; đầy đủ đề bài/thao tác, phân tích từng phương án/dòng lệnh, kiến thức mở rộng và khung hình tương ứng)
 
 ## Trích dẫn then chốt
 (3-5 câu phát biểu nguyên văn đắt giá nhất từ transcript kèm link timestamp)

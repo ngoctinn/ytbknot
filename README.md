@@ -96,6 +96,14 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
   ytbknot "https://www.youtube.com/watch?v=..." --interval 60 --clean-ads
   ```
 
+* **Chọn mức độ chi tiết bài ghi chú (`--detail`):**
+  * `brief`: Tóm lược nhanh Tầng 1 (đọc trong 2-3 phút, chỉ 2-4 ảnh cốt lõi).
+  * `standard`: Cấu trúc 2 tầng chuẩn mực kỹ thuật (mặc định).
+  * `deep`: Phân tích vi mô siêu chi tiết từng phút giây, chia nhỏ từng 1-3 phút hoặc từng thao tác câu lệnh / câu hỏi đơn lẻ kèm mốc timeline.
+  ```bash
+  ytbknot "https://www.youtube.com/watch?v=..." --detail deep --clean-ads
+  ```
+
 * **Lấy thêm bình luận thảo luận từ cộng đồng:**
   ```bash
   ytbknot "https://www.youtube.com/watch?v=..." --comments

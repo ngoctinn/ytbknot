@@ -2,7 +2,7 @@
 name: ytbknot
 description: "Trích xuất và chuyển đổi video YouTube thành tài liệu học tập kỹ thuật chuyên sâu bằng Tiếng Việt cho Antigravity (AGY). AI tự động phân tích kịch bản để chụp chính xác các khung hình kỹ thuật (code, terminal, sơ đồ), lưu bộ ảnh độc lập, bài note 2 tầng thuần Việt, không emoji, tiêu đề ngắn gọn."
 user-invocable: true
-argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
+argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--detail brief|standard|deep] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
 allowed-tools: "run_command, view_file, write_to_file, ask_question"
 ---
 
@@ -18,16 +18,20 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ## Trinh sát dữ liệu
 
-1. Chạy lệnh trinh sát nhanh chỉ lấy metadata và kịch bản sạch, tự động lưu vào cache cục bộ:
+1. Xác định mức độ chi tiết (`--detail`):
+   - Mặc định: `standard`.
+   - Nếu người dùng yêu cầu tóm tắt nhanh: `brief`.
+   - Nếu người dùng yêu cầu chi tiết nhất, từng phút giây, từng câu hỏi/thao tác: `deep`.
+2. Chạy lệnh trinh sát nhanh chỉ lấy metadata và kịch bản sạch, tự động lưu vào cache cục bộ:
    ```bash
-   ytbknot "[URL]" --no-save --clean-ads
+   ytbknot "[URL]" --no-save --clean-ads --detail <brief|standard|deep>
    ```
-2. Đọc kết quả từ đầu ra:
-   - Metadata: tiêu đề, thời lượng, chương mục, `playlist_title`, `playlist_index`, `tags`.
+3. Đọc kết quả từ đầu ra:
+   - Metadata: tiêu đề, thời lượng, chương mục, `detail_level`, `playlist_title`, `playlist_index`, `tags`.
    - `EXISTING_CATEGORIES`: Danh sách các danh mục chủ đề sẵn có tại thư mục lưu trữ hiện tại.
    - Các khối kịch bản (`Semantic Chunks`) và nội dung chi tiết.
 
-3. **Phân loại danh mục học tập (Adaptive Taxonomy):**
+4. **Phân loại danh mục học tập (Adaptive Taxonomy):**
    - Nếu người dùng truyền `--category <tên>`: Sử dụng danh mục được chỉ định.
    - Nếu không có tham số: AI đối chiếu nội dung bài giảng và tags với `EXISTING_CATEGORIES`.
      * Tái sử dụng danh mục có sẵn nếu cùng chủ đề (ví dụ đã có `toeic`, `system-design`...).
@@ -35,13 +39,17 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ---
 
-## Phân khối bài giảng
+## Phân khối bài giảng & Mức độ chi tiết
 
-Để bảo toàn 100% độ bao phủ và chiều sâu bài học, tránh hiện tượng trôi ngữ cảnh (Context Drift) với video dài:
-- **Video dưới 45 phút**: Xử lý liền mạch toàn bộ bài giảng trong một chu trình.
-- **Video trên 45 phút hoặc nhiều câu hỏi**:
-  - Dựa vào danh sách `Semantic Chunks` (15-20 phút mỗi khối) hoặc cấu trúc câu hỏi (ví dụ `Question 101`, `Part 5`...).
-  - Xử lý bóc tách chi tiết (Tầng 2) lần lượt theo từng khối, ghi nhận đầy đủ đề bài, giải thích phương án và kiến thức mở rộng.
+Để bảo toàn 100% độ bao phủ và chiều sâu bài học theo cấp độ mong muốn:
+- **`--detail brief`**: Chỉ phân tích tổng luận Tầng 1, lược bỏ Tầng 2 chi tiết để hoàn tất trong 2-3 phút.
+- **`--detail standard`** (Mặc định):
+  - Video dưới 45 phút: Xử lý liền mạch toàn bộ bài giảng trong một chu trình.
+  - Video trên 45 phút: Xử lý theo từng `Semantic Chunk` (10-15 phút/khối) hoặc theo chapters.
+- **`--detail deep`** (Siêu chi tiết):
+  - Phân tích vi mô theo từng lát cắt 1-3 phút hoặc từng thao tác câu lệnh / câu hỏi đơn lẻ.
+  - Bắt buộc ghi nhận mốc thời gian dạng `### [HH:MM:SS] Tên phân đoạn`.
+  - Phân tích cặn kẽ 100% bối cảnh, câu lệnh, logic giải thích và edge cases.
 
 ---
 

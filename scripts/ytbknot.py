@@ -32,6 +32,11 @@ TMPDIR = tempfile.gettempdir()
 
 # Semantic chunking defaults for long video analysis
 DEFAULT_CHUNK_MINUTES = 15.0
+CHUNK_MINUTES_BY_DETAIL = {
+    "brief": 45.0,
+    "standard": 15.0,
+    "deep": 3.0,
+}
 
 # Visual grounding (--visual): how many evenly-spaced keyframes the summarizer
 # worker looks at. Fixed (no override) — keeps the token cost predictable.
@@ -264,7 +269,7 @@ def discover_categories(base_dir: str) -> list[str]:
         return []
 
 
-def render_metadata(meta: dict, category: str | None = None) -> str:
+def render_metadata(meta: dict, category: str | None = None, detail_level: str = "standard") -> str:
     lines = [
         "### Metadata",
         f"title: {meta['title']}",
@@ -277,6 +282,7 @@ def render_metadata(meta: dict, category: str | None = None) -> str:
     ]
     if category:
         lines.append(f"category: {category}")
+    lines.append(f"detail_level: {detail_level}")
     if meta.get("playlist_title"):
         lines.append(f"playlist: {meta['playlist_title']}")
     if meta.get("playlist_index"):
@@ -686,10 +692,11 @@ def chunk_transcript(
     duration: float,
     chunk_minutes: float = DEFAULT_CHUNK_MINUTES,
     chapters: list[dict] | None = None,
+    detail_level: str = "standard",
 ) -> list[dict]:
-    """Segment transcript into manageable semantic blocks for deep analysis.
-    If chapters are available and meaningful (>= 3 chapters), use chapters.
-    Otherwise, split by chunk_minutes (e.g. 15 minutes) with time windows.
+    """Segment transcript into manageable semantic blocks for analysis.
+    In 'brief' or 'standard' mode, if chapters are available (>= 3 chapters), use chapters.
+    In 'deep' mode, if a chapter is longer than chunk_minutes, or if no chapters, subdivide into granular windows.
     Returns list of dicts:
         {'index': int, 'title': str, 'start': float, 'end': float, 'text': str, 'cues': list}
     """
@@ -697,8 +704,10 @@ def chunk_transcript(
         return []
 
     chunks = []
-    # If chapters available with >= 3 items, use them as semantic blocks
-    if chapters and len(chapters) >= 3:
+    chunk_sec = chunk_minutes * 60.0
+
+    # If chapters available with >= 3 items and not deep mode
+    if chapters and len(chapters) >= 3 and detail_level != "deep":
         for idx, ch in enumerate(chapters, 1):
             ch_start = float(ch.get("start_time", 0.0))
             ch_end = _chapter_end_time(chapters, idx - 1)
@@ -713,6 +722,35 @@ def chunk_transcript(
                 "text": ch_text,
                 "cues": ch_cues,
             })
+        return chunks
+
+    # Deep mode with chapters: subdivide chapters if they exceed chunk_sec, preserving chapter context
+    if chapters and len(chapters) >= 3 and detail_level == "deep":
+        idx = 1
+        for ch_idx, ch in enumerate(chapters):
+            ch_start = float(ch.get("start_time", 0.0))
+            ch_end = _chapter_end_time(chapters, ch_idx)
+            ch_title = ch.get("title", f"Phần {ch_idx+1}").strip()
+            cur = ch_start
+            sub_part = 1
+            while cur < ch_end:
+                nxt = min(ch_end, cur + chunk_sec)
+                part_cues = [(t, txt) for t, txt in segments if cur <= t < nxt]
+                part_text = " ".join(txt for _, txt in part_cues).strip()
+                start_str = format_timestamp_display(cur)
+                end_str = format_timestamp_display(nxt)
+                suffix = f" (phần {sub_part})" if (ch_end - ch_start > chunk_sec) else ""
+                chunks.append({
+                    "index": idx,
+                    "title": f"[{start_str} - {end_str}] {ch_title}{suffix}",
+                    "start": cur,
+                    "end": nxt,
+                    "text": part_text,
+                    "cues": part_cues,
+                })
+                idx += 1
+                sub_part += 1
+                cur = nxt
         return chunks
 
     # Otherwise chunk by time window (default 15m = 900s)
@@ -1131,6 +1169,11 @@ def main():
              "If specified, folder is placed under '<output-base>/<category>/'.",
     )
     parser.add_argument(
+        "--detail", choices=["brief", "standard", "deep"], default="standard",
+        help="Detail level: 'brief' (overview only), 'standard' (balanced 2-layer), "
+             "'deep' (granular breakdown with micro-segments). Default: standard.",
+    )
+    parser.add_argument(
         "--playlist-title", default=None,
         help="Explicit playlist title for series organization.",
     )
@@ -1339,9 +1382,16 @@ def main():
     emit_stage(stage_idx, total_stages, "Writing output")
 
     # --- Output structured markdown ---
-    chunks = chunk_transcript(segments, meta["duration"], DEFAULT_CHUNK_MINUTES, meta["chapters"])
+    chunk_min = CHUNK_MINUTES_BY_DETAIL.get(args.detail, DEFAULT_CHUNK_MINUTES)
+    chunks = chunk_transcript(
+        segments,
+        meta["duration"],
+        chunk_minutes=chunk_min,
+        chapters=meta["chapters"],
+        detail_level=args.detail,
+    )
     sections = [
-        render_metadata(meta, args.category),
+        render_metadata(meta, args.category, detail_level=args.detail),
         render_description(meta["description"]),
         render_chapters(meta["chapters"]),
         render_transcript_chunks(chunks),
