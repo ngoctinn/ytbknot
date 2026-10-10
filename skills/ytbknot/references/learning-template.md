@@ -16,29 +16,29 @@
 
 ---
 
-## Tổng quan
+## Tổng luận chuyên đề
 
 * **Bài toán:** Nút thắt cổ chai hoặc bài toán thực tế mà video giải quyết.
 * **Giải pháp:** Kiến trúc, công cụ hoặc phương pháp tiếp cận chính.
-* **10 giây đầu:** Cách tác giả đặt vấn đề và luận đề trọng tâm.
+* **Quy tắc vàng:** Các công thức hoặc nguyên lý cốt lõi rút ra từ bài giảng.
 
 ---
 
-## Chi tiết theo khung hình
+## Bóc tách chi tiết
 
-### [MM:SS](URL) - [Tiêu đề phân đoạn]
+### [[MM:SS](https://www.youtube.com/watch?v=VIDEO_ID&t=Xs)] Tiêu đề phân đoạn
 
-![Tiêu đề ảnh](screenshots/001_...png)
+![Tiêu đề ảnh](screenshots/001_...webp)
 
-* **Màn hình:** Mô tả chi tiết những gì đang hiển thị trên màn hình.
-* **Nội dung:** Phân tích kỹ thuật và giải pháp.
-* **Chia sẻ thực tế:** Kinh nghiệm xương máu hoặc lưu ý tác giả nói ngoài slide.
+* **Màn hình:** Mô tả chi tiết những gì đang hiển thị trên màn hình (code, terminal, slide, sơ đồ).
+* **Nội dung:** Phân tích kỹ thuật chuyên sâu theo thể loại bài giảng.
+* **Chia sẻ thực tế:** Kinh nghiệm thực chiến hoặc lưu ý tác giả nói ngoài slide.
 
 ---
 
 ## Trích dẫn then chốt
 
-> "[Phát biểu nguyên văn đắt giá từ transcript]" — [MM:SS](URL)
+> "[Phát biểu nguyên văn đắt giá từ transcript]" — [[MM:SS](https://www.youtube.com/watch?v=VIDEO_ID&t=Xs)]
 
 ---
 

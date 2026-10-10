@@ -2,7 +2,7 @@
 name: ytbknot
 description: "Trích xuất và chuyển đổi video YouTube thành tài liệu học tập kỹ thuật chuyên sâu bằng Tiếng Việt cho Antigravity (AGY). AI tự động phân tích kịch bản để chụp chính xác các khung hình kỹ thuật (code, terminal, sơ đồ), lưu bộ ảnh độc lập, bài note 2 tầng thuần Việt, không emoji, tiêu đề ngắn gọn."
 user-invocable: true
-argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--detail brief|standard|deep] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--comments] [--transcript-only] [--no-save] | --check"
+argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--detail brief|standard|deep] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--webp-quality <90-95>] [--lossless] [--comments] [--transcript-only] [--no-save] | --check"
 allowed-tools: "run_command, view_file, write_to_file, ask_question"
 ---
 
@@ -47,9 +47,14 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
   - Video dưới 45 phút: Xử lý liền mạch toàn bộ bài giảng trong một chu trình.
   - Video trên 45 phút: Xử lý theo từng `Semantic Chunk` (10-15 phút/khối) hoặc theo chapters.
 - **`--detail deep`** (Siêu chi tiết):
+  - **Nguyên tắc cốt lõi:** File ghi chú phải có giá trị **thay thế hoàn toàn video** — người học đọc bài viết có thể nắm trọn vẹn 100% kiến thức (tự giải được đề, gõ theo được code, hiểu rõ kiến trúc) mà không cần phải mở lại video để dò xem tác giả đang nói gì.
   - Phân tích vi mô theo từng lát cắt 1-3 phút hoặc từng thao tác câu lệnh / câu hỏi đơn lẻ.
-  - Bắt buộc ghi nhận mốc thời gian dạng `### [HH:MM:SS] Tên phân đoạn`.
-  - Phân tích cặn kẽ 100% bối cảnh, câu lệnh, logic giải thích và edge cases.
+  - **Link mốc thời gian bấm được (Clickable Timestamp Link):** Bắt buộc gắn link mốc thời gian dẫn thẳng đến giây đó trên YouTube, định dạng: `### [[HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s)] Tên phân đoạn` (hoặc `### [HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s) Tên phân đoạn`). Tuyệt đối không để text tĩnh không bấm được.
+  - **Khung nhận diện thể loại bài giảng (Lecture Archetypes):** AI tự động nhận diện bài giảng thuộc thể loại nào để áp dụng khung bóc tách tương ứng, tuyệt đối KHÔNG tóm tắt đại khái:
+    1. *Bài giảng Coding / Kỹ thuật thực hành (Live-coding / Hands-on):* Trích xuất mã nguồn/câu lệnh đầy đủ trong code block; giải thích rõ mục đích từng cú pháp, tham số, annotation, cấu hình và phản hồi kết quả DevTools/Terminal.
+    2. *Bài giảng Giải đề / Luyện thi / Ngoại ngữ (Problem-solving / Language / Exam):* Ghi đầy đủ đề bài và toàn bộ phương án A, B, C, D; phân tích cặn kẽ tại sao đúng/sai (bẫy ngữ pháp, lỗi logic, từ khóa gây nhiễu); tổng hợp bảng từ vựng, ngữ pháp cốt lõi hoặc công thức mở rộng.
+    3. *Bài giảng Lý thuyết / Sơ đồ / Kiến trúc (System Design / Theory / Academic):* Bóc tách từng luồng dữ liệu và thành phần sơ đồ; làm rõ cơ chế vận hành nội tại, điều kiện kích hoạt, công thức toán/kinh tế; ghi nhận đầy đủ rủi ro, ngoại lệ và sự đánh đổi (trade-offs).
+    4. *Hướng dẫn Công cụ / Giao diện (Tooling / GUI / Cloud Console / Design):* Liệt kê chính xác quy trình từng bước (đường dẫn click chuột, menu, phím tắt, thông số cấu hình); giải thích ý nghĩa tham số của các tùy chọn bật/tắt.
 
 ---
 
@@ -62,6 +67,7 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
   * **Bắt buộc chụp tại mốc cuối phân đoạn** của từng câu/mục (ngay trước khi giảng viên chuyển sang nội dung kế tiếp từ 2 đến 5 giây).
   * Đây là thời điểm màn hình hiển thị trọn vẹn 100% nội dung ghi chú viết tay, lời giải chi tiết, phân tích đáp án và các từ vựng mở rộng mà giảng viên đã tổng hợp (tránh chụp đầu phân đoạn khi slide còn trắng trơn).
 - **Tua nhanh trực tiếp**: Luôn sử dụng danh sách mốc thời gian cụ thể để ffmpeg nhảy cóc tức thời qua HTTP Range (1-2 giây mỗi ảnh), loại bỏ hoàn toàn nguy cơ bị YouTube bóp băng thông.
+- **Tối ưu định dạng WebP**: Toàn bộ ảnh chụp màn hình, sơ đồ và thumbnail được tự động chuyển đổi sang định dạng WebP (chế độ Near-Lossless chất lượng 90-95% mặc định, hoặc Lossless qua `--lossless`), giảm 80-90% dung lượng so với PNG gốc mà vẫn bảo toàn độ nét chữ và sơ đồ kỹ thuật.
 
 **Quy trình thực thi:**
 1. **Trích xuất theo kịch bản (Bắt buộc)**:
@@ -84,7 +90,7 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 - **Tuyệt đối không emoji/icon trang trí**.
 - **Tiêu đề H2, H3 cực kỳ ngắn gọn (2-4 từ, thuần Việt, không chèn tiếng Anh trong ngoặc đơn)**.
 - **Tầng 1 (Tổng luận chuyên đề):** Đọc nhanh 5 phút nắm 100% tinh hoa, quy tắc và kiến trúc cốt lõi.
-- **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng khối / từng câu hỏi, gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
+- **Tầng 2 (Bóc tách chi tiết):** Đi sâu từng khối / từng câu hỏi; tiêu đề mỗi tiểu mục BẮT BUỘC chứa link timestamp bấm được dẫn thẳng đến giây đó trên YouTube (`### [[HH:MM:SS](URL?t=Xs)] Tên phân đoạn`); gắn kèm hình ảnh kỹ thuật tương ứng, phân tích bản chất và bài toán thực tế.
 - Bố cục bắt buộc: Thuật ngữ -> Tổng luận chuyên đề -> Bóc tách chi tiết -> Trích dẫn then chốt -> Lệnh & Công cụ -> Đánh đổi & Rủi ro.
 
 ---

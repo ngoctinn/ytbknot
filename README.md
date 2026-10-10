@@ -99,7 +99,7 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
 * **Chọn mức độ chi tiết bài ghi chú (`--detail`):**
   * `brief`: Tóm lược nhanh Tầng 1 (đọc trong 2-3 phút, chỉ 2-4 ảnh cốt lõi).
   * `standard`: Cấu trúc 2 tầng chuẩn mực kỹ thuật (mặc định).
-  * `deep`: Phân tích vi mô siêu chi tiết từng phút giây, chia nhỏ từng 1-3 phút hoặc từng thao tác câu lệnh / câu hỏi đơn lẻ kèm mốc timeline.
+  * `deep`: Phân tích vi mô siêu chi tiết từng phút giây (1-3 phút/khối hoặc từng câu hỏi/thao tác); tự động nhận diện 4 thể loại bài giảng (Live-coding, Luyện thi/Ngoại ngữ, Lý thuyết/Sơ đồ, Hướng dẫn công cụ); nội dung ghi chú thay thế hoàn toàn video.
   ```bash
   ytbknot "https://www.youtube.com/watch?v=..." --detail deep --clean-ads
   ```
@@ -119,10 +119,10 @@ Hệ thống phân cấp thư mục tự thích ứng (tối đa 2 tầng) giúp
 ```text
 toeic/
 └── giai-chi-tiet-de-thi-part-5/
-    ├── screenshots/                 # Bộ ảnh chụp màn hình kỹ thuật độc lập
-    │   ├── 001_07m34s.png
+    ├── screenshots/                 # Bộ ảnh chụp màn hình kỹ thuật chuẩn WebP (Near-Lossless 90-95%)
+    │   ├── 001_07m34s.webp
     │   └── ...
-    ├── thumbnail.jpg                # Ảnh bìa HD
+    ├── thumbnail.webp               # Ảnh bìa chuẩn WebP siêu nhẹ
     └── giai-chi-tiet-de-thi-part-5.md # Ghi chú 2 tầng chuẩn kỹ thuật
 ```
 
@@ -133,10 +133,12 @@ system-design/
     ├── 00_overview.md               # Mục lục tổng quan khóa học & tiến độ
     ├── 01_kien-truc-tong-quan/
     │   ├── screenshots/
-    │   ├── thumbnail.jpg
+    │   │   └── 001_...webp
+    │   ├── thumbnail.webp
     │   └── 01_kien-truc-tong-quan.md
     └── 02_message-queue-kafka/
         ├── screenshots/
-        ├── thumbnail.jpg
+        │   └── 001_...webp
+        ├── thumbnail.webp
         └── 02_message-queue-kafka.md
 ```

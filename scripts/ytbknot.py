@@ -155,16 +155,83 @@ def filter_sponsor_segments(segments: list[tuple[float, str]], sponsor_intervals
     return filtered
 
 
+def convert_to_webp(
+    src_path: str,
+    dst_path: str,
+    quality: int = 92,
+    lossless: bool = False,
+) -> bool:
+    """Convert an image (PNG, JPG, etc.) to WebP format with high visual fidelity.
+    Uses PIL/Pillow if available, falls back to ffmpeg or cwebp.
+    quality: 90-95 for near-lossless compression (default 92).
+    lossless: True for 100% mathematical lossless compression.
+    """
+    # 1. Try PIL (Pillow)
+    try:
+        from PIL import Image
+        with Image.open(src_path) as im:
+            im.save(
+                dst_path,
+                format="WEBP",
+                quality=quality,
+                lossless=lossless,
+                method=5,
+            )
+        if os.path.exists(dst_path) and os.path.getsize(dst_path) > 0:
+            return True
+    except Exception:
+        pass
+
+    # 2. Try ffmpeg libwebp
+    try:
+        cmd = [
+            "ffmpeg",
+            "-y", "-loglevel", "error",
+            "-i", src_path,
+            "-c:v", "libwebp",
+            "-lossless", "1" if lossless else "0",
+            "-quality", str(quality),
+            "-compression_level", "5",
+            dst_path,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if proc.returncode == 0 and os.path.exists(dst_path) and os.path.getsize(dst_path) > 0:
+            return True
+    except Exception:
+        pass
+
+    # 3. Try cwebp
+    cwebp = shutil.which("cwebp")
+    if cwebp:
+        try:
+            q_flag = ["-lossless"] if lossless else ["-q", str(quality)]
+            proc = subprocess.run([cwebp, "-quiet", *q_flag, src_path, "-o", dst_path], timeout=30)
+            if proc.returncode == 0 and os.path.exists(dst_path) and os.path.getsize(dst_path) > 0:
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
 def download_thumbnail(thumbnail_url: str, target_dir: str) -> str | None:
     if not thumbnail_url:
         return None
     import urllib.request
     try:
-        target_path = os.path.join(target_dir, "thumbnail.jpg")
+        raw_path = os.path.join(target_dir, "thumbnail.jpg")
+        webp_path = os.path.join(target_dir, "thumbnail.webp")
         req = urllib.request.Request(thumbnail_url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
-            with open(target_path, "wb") as f:
+            with open(raw_path, "wb") as f:
                 f.write(resp.read())
+        # Convert thumbnail to WebP for consistent lightweight storage
+        if convert_to_webp(raw_path, webp_path, quality=92):
+            try:
+                os.remove(raw_path)
+            except OSError:
+                pass
+            return "thumbnail.webp"
         return "thumbnail.jpg"
     except Exception:
         return None
@@ -906,8 +973,11 @@ def extract_screenshots(
     out_dir: str,
     chapters: list[dict],
     warnings: list[str],
+    webp_quality: int = 92,
+    lossless: bool = False,
 ) -> list[tuple[float, str]]:
-    """Extract PNG screenshots at given timestamps via ffmpeg.
+    """Extract screenshots at given timestamps and save as optimized WebP
+    (Near-Lossless / Lossless quality 90-95%).
     Writes files directly into out_dir (caller owns that path).
     Returns [(timestamp_seconds, filename), ...] — filename is the basename
     only, so callers can build whatever relative path they need for markdown.
@@ -929,38 +999,95 @@ def extract_screenshots(
 
         if chapter_title:
             chapter_slug = slugify(chapter_title, 40)
-            filename = f"{i:03d}_{ts_file}_{chapter_slug}.png"
+            filename = f"{i:03d}_{ts_file}_{chapter_slug}.webp"
         else:
-            filename = f"{i:03d}_{ts_file}.png"
+            filename = f"{i:03d}_{ts_file}.webp"
 
         filepath = os.path.join(out_dir, filename)
 
-        # -y -loglevel BEFORE -ss; -ss BEFORE -i for fast input seeking.
-        # Decimal seconds: truncating to int could seek BEFORE a detected
-        # scene change and capture the previous screen.
-        cmd = [
+        # 1. Direct ffmpeg capture with WebP encoder
+        cmd_direct = [
             "ffmpeg",
             "-y", "-loglevel", "error",
             "-ss", f"{ts:.2f}",
             "-i", stream_url,
             "-frames:v", "1",
+            "-c:v", "libwebp",
+            "-lossless", "1" if lossless else "0",
+            "-quality", str(webp_quality),
+            "-compression_level", "5",
             filepath,
         ]
 
+        success = False
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            subprocess.run(cmd_direct, capture_output=True, text=True, timeout=60)
             checked_path = _long_path(filepath)
             if os.path.exists(checked_path) and os.path.getsize(checked_path) > 0:
-                results.append((ts, filename))
-            else:
-                err = proc.stderr.strip() if proc.stderr else "unknown error"
-                msg = f"Frame at {format_timestamp_display(ts)} failed: {err}"
-                warnings.append(msg)
-                print(f"WARNING: {msg}", file=sys.stderr)
+                success = True
         except subprocess.TimeoutExpired:
             msg = f"Frame at {format_timestamp_display(ts)} timed out (>60s)"
             warnings.append(msg)
             print(f"WARNING: {msg}", file=sys.stderr)
+            continue
+        except Exception:
+            pass
+
+        # 2. Fallback: Capture temporary PNG and convert to WebP
+        if not success:
+            temp_png = os.path.join(out_dir, f"_temp_{i:03d}.png")
+            cmd_fallback = [
+                "ffmpeg",
+                "-y", "-loglevel", "error",
+                "-ss", f"{ts:.2f}",
+                "-i", stream_url,
+                "-frames:v", "1",
+                temp_png,
+            ]
+            try:
+                proc = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=60)
+                if os.path.exists(temp_png) and os.path.getsize(temp_png) > 0:
+                    if convert_to_webp(temp_png, filepath, quality=webp_quality, lossless=lossless):
+                        success = True
+                    try:
+                        os.remove(temp_png)
+                    except OSError:
+                        pass
+                else:
+                    err = proc.stderr.strip() if proc.stderr else "unknown error"
+                    msg = f"Frame at {format_timestamp_display(ts)} failed: {err}"
+                    warnings.append(msg)
+                    print(f"WARNING: {msg}", file=sys.stderr)
+            except subprocess.TimeoutExpired:
+                msg = f"Frame at {format_timestamp_display(ts)} timed out (>60s)"
+                warnings.append(msg)
+                print(f"WARNING: {msg}", file=sys.stderr)
+            except Exception as e:
+                msg = f"Frame at {format_timestamp_display(ts)} error: {e}"
+                warnings.append(msg)
+                print(f"WARNING: {msg}", file=sys.stderr)
+
+        if success:
+            results.append((ts, filename))
+
+    # Convert any lingering legacy PNGs in out_dir to WebP and clean them up
+    try:
+        for legacy_png in glob.glob(os.path.join(out_dir, "*.png")):
+            if "_temp_" in legacy_png:
+                try:
+                    os.remove(legacy_png)
+                except OSError:
+                    pass
+                continue
+            legacy_webp = os.path.splitext(legacy_png)[0] + ".webp"
+            if not os.path.exists(legacy_webp):
+                if convert_to_webp(legacy_png, legacy_webp, quality=webp_quality, lossless=lossless):
+                    try:
+                        os.remove(legacy_png)
+                    except OSError:
+                        pass
+    except Exception:
+        pass
 
     return results
 
@@ -1208,6 +1335,14 @@ def main():
         help="Bypass local cache and force re-fetching all data from YouTube.",
     )
     parser.add_argument(
+        "--webp-quality", type=int, default=92,
+        help="WebP compression quality for screenshots (90-95 recommended, default: 92).",
+    )
+    parser.add_argument(
+        "--lossless", action="store_true",
+        help="Use lossless WebP compression for screenshots instead of near-lossless.",
+    )
+    parser.add_argument(
         "--no-save", action="store_true",
         help="Do not create target folder or save thumbnail; print output and cache only.",
     )
@@ -1353,6 +1488,8 @@ def main():
                 screenshots = extract_screenshots(
                     url, timestamps, out_dir, meta["chapters"],
                     screenshot_warnings,
+                    webp_quality=args.webp_quality,
+                    lossless=args.lossless,
                 )
             else:
                 emit_stage(stage_idx, total_stages, "No valid screenshot timestamps")
@@ -1372,7 +1509,11 @@ def main():
             vts = evenly_spaced_timestamps(meta["duration"], VISUAL_FRAME_COUNT)
             if vts:
                 visual_tmpdir = tempfile.mkdtemp(prefix="ytbknot-visual-")
-                visual_frames = extract_screenshots(url, vts, visual_tmpdir, [], [])
+                visual_frames = extract_screenshots(
+                    url, vts, visual_tmpdir, [], [],
+                    webp_quality=args.webp_quality,
+                    lossless=args.lossless,
+                )
                 if not visual_frames:
                     shutil.rmtree(visual_tmpdir, ignore_errors=True)
                     visual_tmpdir = ""
