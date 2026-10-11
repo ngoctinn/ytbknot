@@ -109,6 +109,12 @@ Khi được gọi, kỹ năng sẽ tự động thực thi theo quy trình 2 ph
   ytbknot "https://www.youtube.com/watch?v=..." --comments
   ```
 
+* **Lập chỉ mục toàn bộ Playlist hoặc Kênh YouTube (Curriculum Tracker):**
+  Quét toàn bộ danh sách trong 2-4 giây, tạo Master Dashboard `00_INDEX.md` định dạng Todo List và dựng sẵn cây thư mục học tập cho từng bài:
+  ```bash
+  ytbknot "https://www.youtube.com/playlist?list=..." --index --category "system-design"
+  ```
+
 ---
 
 ## 4. Cấu trúc kết quả đầu ra
@@ -130,15 +136,14 @@ toeic/
 ```text
 system-design/
 └── microservices-tu-co-ban-den-nang-cao/
+    ├── 00_INDEX.md                  # Master Dashboard theo dõi tiến độ (Todo List, % hoàn thành)
     ├── 00_overview.md               # Mục lục tổng quan khóa học & tiến độ
     ├── 01_kien-truc-tong-quan/
     │   ├── screenshots/
     │   │   └── 001_...webp
     │   ├── thumbnail.webp
-    │   └── 01_kien-truc-tong-quan.md
+    │   └── 01_kien-truc-tong-quan.md # Bài note hoàn chỉnh (đã học xong -> tick [x])
     └── 02_message-queue-kafka/
-        ├── screenshots/
-        │   └── 001_...webp
-        ├── thumbnail.webp
-        └── 02_message-queue-kafka.md
+        ├── README.md                # Lệnh chạy trích xuất tạo sẵn cho bài kế tiếp
+        └── ...
 ```

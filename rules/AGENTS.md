@@ -1,10 +1,17 @@
 # ytbknot Plugin Rules (Antigravity)
 
+## 0. Activation Signals
+Khi kích hoạt hoặc chạy bất kỳ tác vụ nào liên quan đến plugin `ytbknot` (skill hoặc subagent):
+- Format (ytbknot-* only): `> 🎬 **YTBKNOT** → <name> activated`
+- Ví dụ: `> 🎬 **YTBKNOT** → ytbknot activated`, `> 🎬 **YTBKNOT** → ytbknot-index activated`, `> 🎬 **YTBKNOT** → ytbknot-writer agent activated`
+- Xuất chính xác 1 dòng tín hiệu ở đầu lượt phản hồi.
+
 Quy tắc bắt buộc khi kích hoạt skill `ytbknot`:
 
 ## 1. Mặc định Tiếng Việt Kỹ Thuật
 - Toàn bộ nội dung phân tích và ghi chú học tập PHẢI viết bằng **Tiếng Việt**.
-- Thuật ngữ kỹ thuật tiếng Anh chuẩn (như *Git Worktree*, *Context Window Drift*, *MCP Server*, *Linter*, *Unit Test*...) giữ nguyên từ ngữ gốc, có giải thích bản chất ở bảng thuật ngữ.
+- Thuật ngữ kỹ thuật tiếng Anh chuẩn (như *Git Worktree*, *Context Window*, *MCP Server*, *Connection Pooling*, *Unit Test*...) giữ nguyên từ ngữ gốc, có giải thích bản chất ở bảng thuật ngữ.
+- **Cấm chèn tiếng Anh trong ngoặc đơn dạng song ngữ rườm rà**: Tuyệt đối KHÔNG viết kiểu `Tiếng Việt (English)` trong toàn bộ bài viết (ví dụ: cấm viết `Tuần tự hóa (Serialization)`, `Độ phức tạp chu trình (Cyclomatic Complexity)`, `Môi trường cô lập (Sandboxed Environment)`). Đã có bảng thuật ngữ tra cứu riêng, trong nội dung bài viết chỉ dùng một cách gọi duy nhất (hoặc từ thuần Việt gãy gọn, hoặc thuật ngữ gốc tiếng Anh), không lặp lại từ trong ngoặc đơn.
 - Văn phong khách quan, gãy gọn, tập trung vào bản chất kỹ thuật và giải pháp. Tuyệt đối không dùng từ ngữ sáo rỗng hoặc đao to búa lớn.
 
 ## 2. Tiêu Chuẩn Trình Bày: Không Emoji & Tiêu Đề Ngắn Gọn
@@ -42,20 +49,20 @@ Mặc định áp dụng mức độ `standard` nếu người dùng không ch�
   - **Link mốc thời gian bấm được (Clickable Timestamp Link):** Mỗi tiểu mục bắt buộc gắn link mốc thời gian dẫn thẳng đến giây đó trên YouTube, định dạng: `### [[HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s)] Tên phân đoạn` (hoặc `### [HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s) Tên phân đoạn`). Tuyệt đối không để mốc thời gian dạng text chết không bấm được.
   - Trích xuất ảnh dày đặc cho từng bước thực thi hoặc slide thay đổi nội dung.
   - **Nhận diện thể loại bài giảng (Lecture Archetypes):** AI tự động nhận diện bài giảng thuộc thể loại nào dưới đây để áp dụng khung bóc tách tương ứng, tuyệt đối KHÔNG tóm tắt đại khái:
-    1. **Bài giảng Coding / Kỹ thuật thực hành (Live-coding / Hands-on):**
+    1. **Bài giảng Coding và kỹ thuật thực hành:**
        - *Mã nguồn đầy đủ:* Trích xuất code block hoặc câu lệnh thực tế (không mô tả chay bằng lời).
-       - *Bóc tách chi tiết:* Giải thích rõ mục đích của từng cú pháp, tham số, annotation, cấu hình và phản hồi kết quả (DevTools/Terminal output).
-    2. **Bài giảng Giải đề / Luyện thi / Ngoại ngữ (Problem-solving / Language / Exam):**
+       - *Bóc tách chi tiết:* Giải thích rõ mục đích của từng cú pháp, tham số, annotation, cấu hình và phản hồi kết quả terminal hoặc DevTools.
+    2. **Bài giảng Giải đề, luyện thi hoặc ngoại ngữ:**
        - *Đầy đủ đề bài:* Ghi rõ câu hỏi, ngữ cảnh và toàn bộ các phương án lựa chọn (A, B, C, D).
        - *Phân tích từng phương án:* Chỉ rõ tại sao phương án này đúng, tại sao các phương án khác sai (bẫy ngữ pháp, lỗi logic, từ khóa gây nhiễu).
        - *Mở rộng kiến thức:* Tổng hợp bảng từ vựng chuyên ngành, ngữ pháp cốt lõi hoặc công thức liên quan xuất hiện trong câu đó.
-    3. **Bài giảng Lý thuyết / Sơ đồ / Kiến trúc (System Design / Theory / Academic):**
-       - *Bóc tách sơ đồ:* Phân tích từng luồng dữ liệu, từng thành phần (node, component, flow) hiển thị trên màn hình/bảng vẽ.
-       - *Cơ chế vận hành:* Làm rõ nguyên lý hoạt động nội tại, điều kiện kích hoạt, công thức toán/kinh tế và các định luật liên quan.
-       - *Đánh đổi & Ngoại lệ:* Ghi nhận đầy đủ các tình huống ngoại lệ, rủi ro và sự đánh đổi (trade-offs) mà giảng viên phân tích.
-    4. **Hướng dẫn Công cụ / Giao diện (Tooling / GUI / Cloud Console / Design):**
+    3. **Bài giảng Lý thuyết, sơ đồ hoặc kiến trúc:**
+       - *Bóc tách sơ đồ:* Phân tích từng luồng dữ liệu, từng thành phần hiển thị trên màn hình hoặc bảng vẽ.
+       - *Cơ chế vận hành:* Làm rõ nguyên lý hoạt động nội tại, điều kiện kích hoạt, công thức toán hoặc kinh tế và các định luật liên quan.
+       - *Đánh đổi và ngoại lệ:* Ghi nhận đầy đủ các tình huống ngoại lệ, rủi ro và sự đánh đổi mà giảng viên phân tích.
+    4. **Hướng dẫn Công cụ và giao diện:**
        - *Quy trình từng bước:* Liệt kê chính xác đường dẫn click chuột, menu, phím tắt hoặc thông số cấu hình cụ thể trên từng màn hình.
-       - *Ý nghĩa tham số:* Giải thích tác dụng thực tế của các tùy chọn được bật/tắt trong công cụ.
+       - *Ý nghĩa tham số:* Giải thích tác dụng thực tế của các tùy chọn được bật hoặc tắt trong công cụ.
 
 ```markdown
 # [Tên Video / Tiêu đề bài giảng]
@@ -66,7 +73,7 @@ Mặc định áp dụng mức độ `standard` nếu người dùng không ch�
 ---
 
 ## Thuật ngữ
-(Bảng tra cứu thuật ngữ và từ viết tắt: Thuật ngữ | Tiếng Anh | Giải thích)
+(Bảng tra cứu thuật ngữ và từ viết tắt: Thuật ngữ | Giải thích)
 
 ## Tổng luận chuyên đề
 (Tầng 1: Đọc nhanh 5 phút nắm 100% tinh hoa, phân loại theo 3-4 chuyên đề lớn kèm công thức và quy tắc vàng)
@@ -78,7 +85,7 @@ Mặc định áp dụng mức độ `standard` nếu người dùng không ch�
 (3-5 câu phát biểu nguyên văn đắt giá nhất từ transcript kèm link timestamp)
 
 ## Lệnh & Công cụ
-(Khối lệnh CLI copy dùng ngay hoặc công thức nhận diện nhanh)
+(Khối lệnh CLI, công cụ phần mềm hoặc công thức do CHÍNH BÀI GIẢNG / TÁC GIẢ đề cập)
 
 ## Đánh đổi & Rủi ro
 (Đánh đổi tài nguyên, chi phí token, điểm mù và nguy cơ thực tế)

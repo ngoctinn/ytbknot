@@ -72,6 +72,9 @@ def find_node_path() -> str | None:
 
 def run_ytdlp(args: list[str]) -> subprocess.CompletedProcess:
     cmd = ["yt-dlp"]
+    cookie_file = os.environ.get("YTBKNOT_COOKIES")
+    if cookie_file and os.path.exists(cookie_file):
+        cmd.extend(["--cookies", cookie_file])
     node_path = find_node_path()
     if node_path and os.path.exists(node_path):
         cmd.extend(["--js-runtimes", f"node:{node_path}"])
@@ -529,8 +532,250 @@ def extract_metadata(url: str) -> dict | None:
         return None
 
 
+def format_total_duration(seconds: float) -> str:
+    """Format total seconds as Xh Ym or Xm Ys."""
+    s = int(seconds)
+    h, remainder = divmod(s, 3600)
+    m, sec = divmod(remainder, 60)
+    if h > 0:
+        return f"{h}h {m:02d}m"
+    return f"{m}m {sec:02d}s"
+
+
+def generate_progress_bar(completed: int, total: int, width: int = 20) -> str:
+    """Generate visual progress bar in text."""
+    if total <= 0:
+        return "[░░░░░░░░░░░░░░░░░░░░] 0/0 (0.0%)"
+    percent = (completed / total) * 100
+    filled = int(round(width * (completed / total)))
+    filled = min(width, max(0, filled))
+    bar = "█" * filled + "░" * (width - filled)
+    return f"[{bar}] {completed}/{total} ({percent:.1f}%)"
+
+
+def sync_index_progress(pl_dir: str) -> None:
+    """Scan pl_dir and update checkboxes [ ] / [x] and progress bar in 00_INDEX.md."""
+    index_path = os.path.join(pl_dir, "00_INDEX.md")
+    if not os.path.isfile(index_path):
+        return
+
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return
+
+    new_lines = []
+    total_items = 0
+    completed_items = 0
+
+    # Pattern: - [ ] **01** · [Title](subfolder/filename.md) ...
+    item_pattern = re.compile(r"^- \[( |x|X)\] \*\*(\d+)\*\* · \[(.*?)\]\((.*?)\)(.*)$")
+
+    for line in lines:
+        m = item_pattern.match(line.strip())
+        if m:
+            total_items += 1
+            idx_str, title, link_path, suffix = m.group(2), m.group(3), m.group(4), m.group(5)
+            full_note_path = os.path.join(pl_dir, link_path.replace("/", os.sep))
+
+            # Check if actual study note exists and is non-empty (> 200 bytes)
+            is_done = False
+            if os.path.isfile(full_note_path):
+                try:
+                    if os.path.getsize(full_note_path) > 200:
+                        is_done = True
+                except OSError:
+                    pass
+
+            sub_folder = os.path.dirname(full_note_path)
+            if not is_done and os.path.isdir(sub_folder):
+                for f_name in os.listdir(sub_folder):
+                    if f_name.endswith(".md") and f_name.lower() != "readme.md":
+                        try:
+                            if os.path.getsize(os.path.join(sub_folder, f_name)) > 200:
+                                is_done = True
+                                break
+                        except OSError:
+                            pass
+
+            box = "x" if is_done else " "
+            if is_done:
+                completed_items += 1
+            new_lines.append(f"- [{box}] **{idx_str}** · [{title}]({link_path}){suffix}\n")
+        elif line.startswith("* **Tiến độ:**"):
+            new_lines.append("__PROGRESS_LINE_SLOT__\n")
+        else:
+            new_lines.append(line)
+
+    progress_bar_str = generate_progress_bar(completed_items, total_items)
+    final_lines = []
+    for line in new_lines:
+        if line == "__PROGRESS_LINE_SLOT__\n":
+            final_lines.append(f"* **Tiến độ:** `{progress_bar_str}`\n")
+        else:
+            final_lines.append(line)
+
+    try:
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.writelines(final_lines)
+    except OSError:
+        pass
+
+
+def fetch_playlist_or_channel_index(url: str, limit: int | None = None) -> dict | None:
+    """Fetch all entries of a playlist or channel in fast flat mode (no video bytes)."""
+    cmd = ["--flat-playlist", "--dump-single-json", "--no-warnings"]
+    if limit and limit > 0:
+        cmd.extend(["--playlist-end", str(limit)])
+    cmd.append(url)
+
+    result = run_ytdlp(cmd)
+    if result.returncode != 0:
+        return None
+
+    try:
+        data = json.loads(result.stdout)
+    except Exception:
+        return None
+
+    raw_entries = data.get("entries") or []
+    valid_entries = []
+    total_sec = 0.0
+
+    for item in raw_entries:
+        if not item or not isinstance(item, dict):
+            continue
+        v_id = item.get("id") or ""
+        v_title = item.get("title") or ""
+        if not v_title or v_title == "[Deleted video]" or v_title == "[Private video]":
+            continue
+        dur = float(item.get("duration") or 0.0)
+        total_sec += dur
+        v_url = item.get("url") or f"https://www.youtube.com/watch?v={v_id}"
+        if not v_url.startswith("http"):
+            v_url = f"https://www.youtube.com/watch?v={v_id}"
+        valid_entries.append({
+            "id": v_id,
+            "title": v_title,
+            "duration": dur,
+            "duration_str": format_timestamp_display(dur) if dur > 0 else "N/A",
+            "url": v_url,
+            "upload_date": item.get("upload_date") or "",
+        })
+
+    title = data.get("title") or "Danh sách bài giảng"
+    channel = data.get("channel") or data.get("uploader") or "Không rõ"
+
+    return {
+        "title": title,
+        "channel": channel,
+        "url": data.get("webpage_url") or url,
+        "description": (data.get("description") or "").strip(),
+        "total_videos": len(valid_entries),
+        "total_duration": total_sec,
+        "total_duration_str": format_total_duration(total_sec),
+        "entries": valid_entries,
+    }
+
+
+def scaffold_playlist_hub(
+    index_data: dict,
+    output_base: str = ".",
+    category: str | None = None,
+    create_subdirs: bool = True,
+) -> tuple[str, str]:
+    """Create master 00_INDEX.md dashboard and lesson directories with placeholders."""
+    cat_dir = os.path.join(output_base, slugify(category)) if category else output_base
+    pl_slug = slugify(index_data["title"])
+    target_dir = os.path.join(cat_dir, pl_slug)
+    os.makedirs(target_dir, exist_ok=True)
+
+    today_str = datetime.date.today().isoformat()
+    total_count = index_data["total_videos"]
+    total_dur_str = index_data["total_duration_str"]
+    channel = index_data["channel"]
+    title = index_data["title"]
+    source_url = index_data["url"]
+    cat_str = category if category else "Chung"
+
+    lines = [
+        f"# {title} — Lộ Trình Học Tập",
+        "",
+        f"* **Tác giả:** {channel} | **Tổng số bài:** {total_count} video | **Tổng thời lượng:** {total_dur_str}",
+        f"* **Danh mục:** {cat_str} | **Ngày khởi tạo:** {today_str}",
+        f"* **Tiến độ:** `{generate_progress_bar(0, total_count)}`",
+        f"* **Nguồn:** [{source_url}]({source_url})",
+        "",
+        "---",
+        "",
+        "## Danh Sách Bài Học (Curriculum Checklist)",
+        "",
+    ]
+
+    for i, entry in enumerate(index_data["entries"], 1):
+        v_title = entry["title"]
+        v_dur = entry["duration_str"]
+        v_url = entry["url"]
+        v_slug = slugify(v_title)
+        folder_name = f"{i:02d}_{v_slug}"
+        note_name = f"{i:02d}_{v_slug}.md"
+        rel_link = f"{folder_name}/{note_name}"
+
+        lines.append(f"- [ ] **{i:02d}** · [{v_title}]({rel_link}) `[{v_dur}]` — [YouTube]({v_url})")
+
+        if create_subdirs:
+            sub_dir = os.path.join(target_dir, folder_name)
+            os.makedirs(sub_dir, exist_ok=True)
+            readme_path = os.path.join(sub_dir, "README.md")
+            if not os.path.exists(readme_path) and not os.path.exists(os.path.join(sub_dir, note_name)):
+                sub_content = [
+                    f"# [{i:02d}] {v_title}",
+                    "",
+                    f"* **Khóa học:** {title}",
+                    f"* **Tác giả:** {channel}",
+                    f"* **Lộ trình khóa học:** [00_INDEX.md](../00_INDEX.md)",
+                    f"* **Thời lượng:** {v_dur}",
+                    f"* **Video gốc:** [{v_url}]({v_url})",
+                    "",
+                    "### Cách bắt đầu học bài này với AI Assistant",
+                    "Gửi một trong các câu lệnh/prompt sau trực tiếp vào khung chat để AI tự động trích xuất và đồng bộ tiến độ vào [00_INDEX.md](../00_INDEX.md):",
+                    "",
+                    "1. **Biên soạn siêu chi tiết kèm ảnh (Khuyên dùng):**",
+                    f'> "Tạo ghi chú deep cho Bài {i:02d} trong khóa {title}: {v_url}"',
+                    "",
+                    "2. **Chỉ ghi chép lý thuyết (Không chụp ảnh):**",
+                    f'> "Tạo ghi chú cho Bài {i:02d} trong khóa {title}: {v_url} --detail deep --transcript-only"',
+                    "",
+                    "3. **Tóm lược nhanh:**",
+                    f'> "Tóm tắt nhanh Bài {i:02d} trong khóa {title}: {v_url} --detail brief"',
+                    "",
+                    f'*(Lệnh CLI tham khảo cho terminal ngoài nếu cần: `ytbknot "{v_url}" --category "{category or "general"}" --detail deep`)*',
+                    "",
+                ]
+                try:
+                    with open(readme_path, "w", encoding="utf-8") as f:
+                        f.write("\n".join(sub_content))
+                except OSError:
+                    pass
+
+    lines.append("")
+    lines.append("---")
+    lines.append("*Ghi chú: File chỉ mục được tạo tự động bởi `ytbknot-index`. Tiến độ được tự động cập nhật khi hoàn thành từng bài giảng.*")
+    lines.append("")
+
+    index_path = os.path.join(target_dir, "00_INDEX.md")
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    # Synchronize in case some notes already exist
+    sync_index_progress(target_dir)
+
+    return target_dir, index_path
+
+
 def update_playlist_overview(pl_dir: str, meta: dict, category: str | None = None) -> None:
-    """Create or update 00_overview.md in the playlist directory."""
+    """Create or update 00_overview.md and synchronize 00_INDEX.md in the playlist directory."""
     overview_path = os.path.join(pl_dir, "00_overview.md")
     pl_title = meta.get("playlist_title") or "Danh sách bài giảng"
     channel = meta.get("channel", "Không rõ")
@@ -570,6 +815,9 @@ def update_playlist_overview(pl_dir: str, meta: dict, category: str | None = Non
                     f.write(updated)
         except OSError:
             pass
+
+    # Automatically synchronize 00_INDEX.md checkbox for this playlist
+    sync_index_progress(pl_dir)
 
 
 def download_and_process_vtt(url: str, video_id: str) -> tuple[str, str, list[tuple[float, str]]]:
@@ -937,19 +1185,65 @@ def resolve_timestamps(
     return sorted(timestamps)
 
 
-def get_stream_url(url: str) -> str | None:
-    """Get direct video stream URL via yt-dlp -g (1080p Full HD quality)."""
-    result = run_ytdlp([
-        "-g", "-f", "bestvideo[height<=1080]/bestvideo/best",
-        "--no-playlist", "--no-warnings", url,
-    ])
-    if result.returncode != 0:
-        return None
-    lines = result.stdout.strip().split("\n")
-    return lines[0] if lines else None
+def extract_screenshot_frame(
+    url: str,
+    ts: float,
+    filepath: str,
+    webp_quality: int = 92,
+    lossless: bool = False,
+) -> bool:
+    """Safely extract a single frame using yt-dlp section download + local ffmpeg WebP conversion.
+    This eliminates 403 Forbidden errors because yt-dlp handles YouTube bot-defense, cookies, and tokens.
+    """
+    start_sec = max(0.0, ts - 1.0)
+    end_sec = ts + 2.0
+    section_arg = f"*{start_sec:.2f}-{end_sec:.2f}"
 
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video:
+        temp_video_path = temp_video.name
 
+    try:
+        # 1. Download a tiny 2-3s slice safely through yt-dlp
+        dl_args = [
+            "--download-sections", section_arg,
+            "-f", "bestvideo[height<=1080]/best[height<=1080]/best",
+            "--no-playlist",
+            "--no-warnings",
+            "--force-overwrites",
+            "-o", temp_video_path,
+            url,
+        ]
+        res = run_ytdlp(dl_args)
+        if res.returncode != 0 or not os.path.exists(temp_video_path) or os.path.getsize(temp_video_path) == 0:
+            return False
 
+        # 2. Extract frame locally with ffmpeg to WebP
+        offset_in_slice = ts - start_sec
+        cmd_ffmpeg = [
+            "ffmpeg",
+            "-y", "-loglevel", "error",
+            "-ss", f"{offset_in_slice:.2f}",
+            "-i", temp_video_path,
+            "-frames:v", "1",
+            "-c:v", "libwebp",
+            "-lossless", "1" if lossless else "0",
+            "-quality", str(webp_quality),
+            "-compression_level", "5",
+            filepath,
+        ]
+        proc = subprocess.run(cmd_ffmpeg, capture_output=True, text=True, timeout=30)
+        checked_path = _long_path(filepath)
+        if os.path.exists(checked_path) and os.path.getsize(checked_path) > 0:
+            return True
+        return False
+    except Exception:
+        return False
+    finally:
+        try:
+            if os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+        except OSError:
+            pass
 
 
 def _long_path(path: str) -> str:
@@ -983,13 +1277,6 @@ def extract_screenshots(
     only, so callers can build whatever relative path they need for markdown.
     Appends any issues to warnings list.
     """
-    stream_url = get_stream_url(url)
-    if not stream_url:
-        msg = "Could not fetch stream URL. No screenshots extracted."
-        warnings.append(msg)
-        print(f"ERROR: {msg}", file=sys.stderr)
-        return []
-
     os.makedirs(out_dir, exist_ok=True)
 
     results = []
@@ -1005,70 +1292,20 @@ def extract_screenshots(
 
         filepath = os.path.join(out_dir, filename)
 
-        # 1. Direct ffmpeg capture with WebP encoder
-        cmd_direct = [
-            "ffmpeg",
-            "-y", "-loglevel", "error",
-            "-ss", f"{ts:.2f}",
-            "-i", stream_url,
-            "-frames:v", "1",
-            "-c:v", "libwebp",
-            "-lossless", "1" if lossless else "0",
-            "-quality", str(webp_quality),
-            "-compression_level", "5",
-            filepath,
-        ]
-
-        success = False
-        try:
-            subprocess.run(cmd_direct, capture_output=True, text=True, timeout=60)
-            checked_path = _long_path(filepath)
-            if os.path.exists(checked_path) and os.path.getsize(checked_path) > 0:
-                success = True
-        except subprocess.TimeoutExpired:
-            msg = f"Frame at {format_timestamp_display(ts)} timed out (>60s)"
-            warnings.append(msg)
-            print(f"WARNING: {msg}", file=sys.stderr)
-            continue
-        except Exception:
-            pass
-
-        # 2. Fallback: Capture temporary PNG and convert to WebP
-        if not success:
-            temp_png = os.path.join(out_dir, f"_temp_{i:03d}.png")
-            cmd_fallback = [
-                "ffmpeg",
-                "-y", "-loglevel", "error",
-                "-ss", f"{ts:.2f}",
-                "-i", stream_url,
-                "-frames:v", "1",
-                temp_png,
-            ]
-            try:
-                proc = subprocess.run(cmd_fallback, capture_output=True, text=True, timeout=60)
-                if os.path.exists(temp_png) and os.path.getsize(temp_png) > 0:
-                    if convert_to_webp(temp_png, filepath, quality=webp_quality, lossless=lossless):
-                        success = True
-                    try:
-                        os.remove(temp_png)
-                    except OSError:
-                        pass
-                else:
-                    err = proc.stderr.strip() if proc.stderr else "unknown error"
-                    msg = f"Frame at {format_timestamp_display(ts)} failed: {err}"
-                    warnings.append(msg)
-                    print(f"WARNING: {msg}", file=sys.stderr)
-            except subprocess.TimeoutExpired:
-                msg = f"Frame at {format_timestamp_display(ts)} timed out (>60s)"
-                warnings.append(msg)
-                print(f"WARNING: {msg}", file=sys.stderr)
-            except Exception as e:
-                msg = f"Frame at {format_timestamp_display(ts)} error: {e}"
-                warnings.append(msg)
-                print(f"WARNING: {msg}", file=sys.stderr)
+        success = extract_screenshot_frame(
+            url=url,
+            ts=ts,
+            filepath=filepath,
+            webp_quality=webp_quality,
+            lossless=lossless,
+        )
 
         if success:
             results.append((ts, filename))
+        else:
+            msg = f"Frame at {format_timestamp_display(ts)} failed to extract"
+            warnings.append(msg)
+            print(f"WARNING: {msg}", file=sys.stderr)
 
     # Convert any lingering legacy PNGs in out_dir to WebP and clean them up
     try:
@@ -1239,14 +1476,17 @@ def run_transcript_only(args: argparse.Namespace) -> None:
     slug = video_id or ("video-" + slugify(url, 40))
 
     date_str = datetime.date.today().isoformat()
-    target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
+    if args.target_dir:
+        target = os.path.abspath(args.target_dir)
+    else:
+        target = os.path.join(args.output_base, f"ytbknot_{date_str}_{slug}")
 
-    # Collision guard before any work — so a re-run without --force does not
-    # emit a stage marker for work it never starts.
-    if os.path.isdir(target) and not args.force:
-        print(f"FOLDER_EXISTS: {target}", file=sys.stderr, flush=True)
-        sys.exit(2)
-    os.makedirs(target, exist_ok=True)
+    # Collision guard before any work
+    if not args.no_save:
+        if os.path.isdir(target) and not args.force and not args.target_dir:
+            print(f"FOLDER_EXISTS: {target}", file=sys.stderr, flush=True)
+            sys.exit(2)
+        os.makedirs(target, exist_ok=True)
 
     emit_stage(1, total_stages, "Downloading transcript")
     # Pass `slug` (not a fixed literal) as the temp-file discriminator so the
@@ -1268,9 +1508,49 @@ def run_transcript_only(args: argparse.Namespace) -> None:
     print(f"OUTPUT_FOLDER: {target.replace(os.sep, '/')}")
 
 
+def run_index_workflow(args: argparse.Namespace) -> None:
+    """Fast reconnaissance and scaffolding for an entire playlist or channel."""
+    url = args.url
+    emit_stage(1, 2, f"Inspecting playlist / channel: {url}")
+    index_data = fetch_playlist_or_channel_index(url, limit=args.limit)
+    if not index_data or not index_data["entries"]:
+        print(f"ERROR: Could not retrieve playlist/channel entries from {url}", file=sys.stderr)
+        sys.exit(1)
+
+    emit_stage(2, 2, f"Scaffolding curriculum hub ({index_data['total_videos']} videos)")
+    create_subdirs = not args.no_scaffold
+    target_dir, index_path = scaffold_playlist_hub(
+        index_data,
+        output_base=args.output_base,
+        category=args.category,
+        create_subdirs=create_subdirs,
+    )
+
+    print()
+    print(f"# Chỉ Mục Khóa Học: {index_data['title']}")
+    print(f"* **Tác giả:** {index_data['channel']}")
+    print(f"* **Tổng số video:** {index_data['total_videos']}")
+    print(f"* **Tổng thời lượng:** {index_data['total_duration_str']}")
+    print(f"* **File chỉ mục:** {index_path.replace(os.sep, '/')}")
+    print()
+    print(f"INDEX_FOLDER: {target_dir.replace(os.sep, '/')}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract YouTube video data")
     parser.add_argument("url", help="YouTube URL")
+    parser.add_argument(
+        "--index", action="store_true",
+        help="Index an entire playlist or channel as a trackable todo-list curriculum hub.",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Limit number of videos when indexing a playlist/channel (e.g. --limit 50).",
+    )
+    parser.add_argument(
+        "--no-scaffold", action="store_true",
+        help="When indexing, generate 00_INDEX.md only without creating lesson subdirectories.",
+    )
     parser.add_argument("--comments", action="store_true", help="Also fetch top comments")
     parser.add_argument(
         "--screenshots", nargs="?", const="chapters", default=None,
@@ -1289,6 +1569,11 @@ def main():
         "--output-base", default=".",
         help="Base directory for the output folder (default: current directory). "
              "Script creates '<base>/[category]/[playlist]/<slug>/' inside it.",
+    )
+    parser.add_argument(
+        "--target-dir", default=None,
+        help="Explicit destination directory for this lecture. When provided, "
+             "bypasses automatic '<output-base>/[category]/[playlist]/<slug>/' construction.",
     )
     parser.add_argument(
         "--category", default=None,
@@ -1348,6 +1633,10 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.index:
+        run_index_workflow(args)
+        return
+
     if args.no_save:
         args.screenshots = None
     elif args.no_screenshots:
@@ -1396,18 +1685,22 @@ def main():
     if args.playlist_index is not None:
         meta["playlist_index"] = args.playlist_index
 
-    cat_dir = os.path.join(args.output_base, slugify(args.category)) if args.category else args.output_base
-    slug = slugify(meta["title"])
-    pl_title = meta.get("playlist_title")
-
-    if pl_title:
-        pl_dir = os.path.join(cat_dir, slugify(pl_title))
-        pl_idx = meta.get("playlist_index")
-        prefix = f"{pl_idx:02d}_" if isinstance(pl_idx, int) else ""
-        target = os.path.join(pl_dir, f"{prefix}{slug}")
-    else:
+    if args.target_dir:
+        target = os.path.abspath(args.target_dir)
         pl_dir = None
-        target = os.path.join(cat_dir, slug)
+    else:
+        cat_dir = os.path.join(args.output_base, slugify(args.category)) if args.category else args.output_base
+        slug = slugify(meta["title"])
+        pl_title = meta.get("playlist_title")
+
+        if pl_title:
+            pl_dir = os.path.join(cat_dir, slugify(pl_title))
+            pl_idx = meta.get("playlist_index")
+            prefix = f"{pl_idx:02d}_" if isinstance(pl_idx, int) else ""
+            target = os.path.join(pl_dir, f"{prefix}{slug}")
+        else:
+            pl_dir = None
+            target = os.path.join(cat_dir, slug)
 
     # --- Collision guard & Target folder creation ---
     if not args.no_save:

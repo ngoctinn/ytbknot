@@ -3,7 +3,7 @@ name: ytbknot
 description: "Trích xuất và chuyển đổi video YouTube thành tài liệu học tập kỹ thuật chuyên sâu bằng Tiếng Việt cho Antigravity (AGY). AI tự động phân tích kịch bản để chụp chính xác các khung hình kỹ thuật (code, terminal, sơ đồ), lưu bộ ảnh độc lập, bài note 2 tầng thuần Việt, không emoji, tiêu đề ngắn gọn."
 user-invocable: true
 argument-hint: "<youtube-url> [url2] [url3] [--category <name>] [--detail brief|standard|deep] [--interval <seconds>] [--clean-ads] [--screenshots [chapters|timestamps]] [--webp-quality <90-95>] [--lossless] [--comments] [--transcript-only] [--no-save] | --check"
-allowed-tools: "run_command, view_file, write_to_file, ask_question"
+allowed-tools: "run_command, view_file, write_to_file, ask_question, invoke_subagent, send_message"
 ---
 
 Phân tích URL YouTube từ người dùng: <user_request>$ARGUMENTS</user_request>
@@ -39,22 +39,27 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
 
 ---
 
-## Phân khối bài giảng & Mức độ chi tiết
+## Phân khối bài giảng & Mô hình Subagent
 
-Để bảo toàn 100% độ bao phủ và chiều sâu bài học theo cấp độ mong muốn:
+Để bảo toàn 100% độ bao phủ, tránh cạn kiệt context hoặc tóm tắt hời hợt, quy trình xử lý được phân bổ theo cấp độ:
 - **`--detail brief`**: Chỉ phân tích tổng luận Tầng 1, lược bỏ Tầng 2 chi tiết để hoàn tất trong 2-3 phút.
 - **`--detail standard`** (Mặc định):
   - Video dưới 45 phút: Xử lý liền mạch toàn bộ bài giảng trong một chu trình.
   - Video trên 45 phút: Xử lý theo từng `Semantic Chunk` (10-15 phút/khối) hoặc theo chapters.
-- **`--detail deep`** (Siêu chi tiết):
+- **`--detail deep`** (Siêu chi tiết & Điều phối Subagent):
   - **Nguyên tắc cốt lõi:** File ghi chú phải có giá trị **thay thế hoàn toàn video** — người học đọc bài viết có thể nắm trọn vẹn 100% kiến thức (tự giải được đề, gõ theo được code, hiểu rõ kiến trúc) mà không cần phải mở lại video để dò xem tác giả đang nói gì.
-  - Phân tích vi mô theo từng lát cắt 1-3 phút hoặc từng thao tác câu lệnh / câu hỏi đơn lẻ.
+  - **Điều phối Subagent (Divide & Conquer)**:
+    1. Agent chính (Orchestrator) gọi `ytbknot-scout` (hoặc chạy trinh sát bằng script) lấy danh sách các Semantic Chunks vi mô (1-3 phút).
+    2. Nếu video dài hoặc có nhiều khối kịch bản kỹ thuật: Phân bổ các khối cho `ytbknot-writer` bóc tách độc lập từng khối.
+       * **Bắt buộc truyền dữ liệu trực tiếp**: Khi dispatch `ytbknot-writer`, Agent chính phải truyền trọn vẹn văn bản transcript và mốc thời gian của chunk vào prompt để subagent không phải tra cứu lại web.
+       * **Subagent không ghi file**: `ytbknot-writer` chỉ xử lý text và trả Markdown về trong tin nhắn. Agent chính là bên duy nhất tổng hợp và gọi `write_to_file`.
+    3. Tác tử chính tổng hợp các phần bóc tách, gắn mốc chụp ảnh và ráp thành tài liệu hoàn chỉnh.
   - **Link mốc thời gian bấm được (Clickable Timestamp Link):** Bắt buộc gắn link mốc thời gian dẫn thẳng đến giây đó trên YouTube, định dạng: `### [[HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s)] Tên phân đoạn` (hoặc `### [HH:MM:SS](<URL_VIDEO>&t=<GIÂY>s) Tên phân đoạn`). Tuyệt đối không để text tĩnh không bấm được.
-  - **Khung nhận diện thể loại bài giảng (Lecture Archetypes):** AI tự động nhận diện bài giảng thuộc thể loại nào để áp dụng khung bóc tách tương ứng, tuyệt đối KHÔNG tóm tắt đại khái:
-    1. *Bài giảng Coding / Kỹ thuật thực hành (Live-coding / Hands-on):* Trích xuất mã nguồn/câu lệnh đầy đủ trong code block; giải thích rõ mục đích từng cú pháp, tham số, annotation, cấu hình và phản hồi kết quả DevTools/Terminal.
-    2. *Bài giảng Giải đề / Luyện thi / Ngoại ngữ (Problem-solving / Language / Exam):* Ghi đầy đủ đề bài và toàn bộ phương án A, B, C, D; phân tích cặn kẽ tại sao đúng/sai (bẫy ngữ pháp, lỗi logic, từ khóa gây nhiễu); tổng hợp bảng từ vựng, ngữ pháp cốt lõi hoặc công thức mở rộng.
-    3. *Bài giảng Lý thuyết / Sơ đồ / Kiến trúc (System Design / Theory / Academic):* Bóc tách từng luồng dữ liệu và thành phần sơ đồ; làm rõ cơ chế vận hành nội tại, điều kiện kích hoạt, công thức toán/kinh tế; ghi nhận đầy đủ rủi ro, ngoại lệ và sự đánh đổi (trade-offs).
-    4. *Hướng dẫn Công cụ / Giao diện (Tooling / GUI / Cloud Console / Design):* Liệt kê chính xác quy trình từng bước (đường dẫn click chuột, menu, phím tắt, thông số cấu hình); giải thích ý nghĩa tham số của các tùy chọn bật/tắt.
+  - **Khung nhận diện thể loại bài giảng:** Tự động nhận diện thể loại để áp dụng khung bóc tách tương ứng:
+    1. *Bài giảng Coding và kỹ thuật thực hành:* Trích xuất mã nguồn hoặc câu lệnh đầy đủ trong code block; giải thích rõ mục đích từng cú pháp, tham số, annotation, cấu hình và phản hồi kết quả terminal hoặc DevTools.
+    2. *Bài giảng Giải đề, luyện thi hoặc ngoại ngữ:* Ghi đầy đủ đề bài và toàn bộ phương án A, B, C, D; phân tích cặn kẽ tại sao đúng hoặc sai (bẫy ngữ pháp, lỗi logic, từ khóa gây nhiễu); tổng hợp bảng từ vựng, ngữ pháp cốt lõi hoặc công thức mở rộng.
+    3. *Bài giảng Lý thuyết, sơ đồ hoặc kiến trúc:* Bóc tách từng luồng dữ liệu và thành phần sơ đồ; làm rõ cơ chế vận hành nội tại, điều kiện kích hoạt, công thức toán hoặc kinh tế; ghi nhận đầy đủ rủi ro, ngoại lệ và sự đánh đổi.
+    4. *Hướng dẫn Công cụ và giao diện:* Liệt kê chính xác quy trình từng bước (đường dẫn click chuột, menu, phím tắt, thông số cấu hình); giải thích ý nghĩa tham số của các tùy chọn bật hoặc tắt.
 
 ---
 
@@ -75,7 +80,11 @@ python3 --version && yt-dlp --version && ffmpeg -version 2>&1 | head -1
    - Loại bỏ hoàn toàn các phân đoạn nói chuyện phiếm (talking head).
    - Chạy lệnh trích xuất chính thức với danh mục và mốc thời gian (dùng lại cache, không tải lại YouTube):
    ```bash
-   ytbknot "[URL]" --category "<category>" --screenshots "<ts1>,<ts2>,<ts3>,..." --force
+   # Video đơn lẻ:
+   ytbknot "[URL]" --category "<category>" --screenshots "<ts1>,<ts2>,..." --force
+
+   # Bài học trong thư mục có sẵn:
+   ytbknot "[URL]" --target-dir "<path/to/lesson>" --screenshots "<ts1>,<ts2>,..." --force
    ```
    - Thư mục được tự động tổ chức chuyên nghiệp:
      * Video đơn lẻ: `<output-base>/<category>/<slug>/`
